@@ -1,5 +1,6 @@
 ﻿import Link from "next/link";
 import { BRAND, LEGAL_DOCS } from "@/lib/site/constants";
+import { NAV_APP_LINKS } from "@/lib/site/navigation";
 
 export default function Footer() {
   return (
@@ -35,6 +36,18 @@ export default function Footer() {
             <li>
               <Link href="/noticias" className="hover:text-white transition">
                 Noticias
+              </Link>
+            </li>
+            {NAV_APP_LINKS.map((link) => (
+              <li key={link.href}>
+                <Link href={link.href} className="hover:text-[#f97316] transition">
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+            <li>
+              <Link href="/login" className="hover:text-white transition">
+                Iniciar Sesión
               </Link>
             </li>
           </ul>
