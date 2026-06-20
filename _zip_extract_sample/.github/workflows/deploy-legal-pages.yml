@@ -1,0 +1,64 @@
+# NavRide — Despliegue legal público (GitHub Pages) — OMEGA-P0-005
+#
+# URL resultante:
+#   https://navride2026.github.io/NavRide/legal/privacy_policy.html
+#
+# Requisito: Settings → Pages → Source = GitHub Actions
+
+name: Deploy Legal Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'assets/legal/**'
+      - '.github/workflows/deploy-legal-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-legal
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar sitio legal
+        run: |
+          mkdir -p _site/legal
+          cp assets/legal/privacy_policy.html _site/legal/privacy_policy.html
+          cp docs/index.html _site/index.html
+
+      - name: Subir artefacto Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Desplegar GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Verificar URL privacidad
+        run: |
+          URL="https://navride2026.github.io/NavRide/legal/privacy_policy.html"
+          echo "Verificando $URL"
+          for i in 1 2 3 4 5; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" -L "$URL" || true)
+            echo "Intento $i: HTTP $CODE"
+            if [ "$CODE" = "200" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::warning::URL aún no responde 200 — puede tardar unos minutos tras primer deploy."
+          exit 0

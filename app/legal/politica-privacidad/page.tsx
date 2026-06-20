@@ -1,332 +1,316 @@
 ﻿import Link from "next/link";
 import PageLayout from "@/components/layout/page-layout";
+import { BRAND } from "@/lib/site/constants";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Política de privacidad",
+  description:
+    "Política de privacidad NavRide — RGPD, Google Play Billing, datos locales y terceros (OSRM, mapas).",
+  alternates: { canonical: "/legal/politica-privacidad" },
+};
 
 export default function PoliticaPrivacidadPage() {
   return (
     <PageLayout>
-
-      <section className="max-w-6xl mx-auto px-8 py-24">
-
-        <Link href="/legal">
-          <button className="mb-12 bg-white/[0.04] border border-white/10 px-6 py-3 rounded-2xl text-white hover:bg-white/[0.08] transition">
-            ← Volver
-          </button>
+      <article className="max-w-3xl mx-auto px-4 md:px-8 py-8 md:py-12">
+        <Link
+          href="/legal"
+          className="inline-block mb-8 text-sm text-white/50 hover:text-white transition"
+        >
+          ← Centro legal
         </Link>
 
-        <div className="mb-14">
-
-          <div className="text-[#FF5A1F] tracking-[0.3em] text-sm mb-5">
-            PRIVACY POLICY · RGPD
-          </div>
-
-          <h1 className="text-6xl font-black text-white">
-            Política de Privacidad
+        <header className="mb-10">
+          <p className="text-[#FF5A1F] text-sm font-semibold tracking-widest uppercase mb-3">
+            RGPD · Google Play
+          </p>
+          <h1 className="text-3xl md:text-4xl font-bold text-white">
+            Política de privacidad
           </h1>
+          <p className="mt-3 text-white/50 text-sm">
+            Última actualización: {BRAND.lastUpdated}
+          </p>
+        </header>
 
+        <div className="space-y-10 text-white/70 text-sm leading-relaxed">
+          <section>
+            <h2 className="text-white font-semibold text-lg mb-3">
+              Responsable del tratamiento
+            </h2>
+            <p>
+              <strong className="text-white">{BRAND.holderName}</strong>
+              <br />
+              {BRAND.holderAddress}
+              <br />
+              <a
+                href={`mailto:${BRAND.supportEmail}`}
+                className="text-[#FF5A1F] hover:underline"
+              >
+                {BRAND.supportEmail}
+              </a>
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-white font-semibold text-lg mb-3">
+              1. Ámbito
+            </h2>
+            <p>
+              NavRide es navegación GPS offroad con rutas GPX, mapas
+              offline/online y suscripción <strong>NavRide Adventure</strong> vía
+              Google Play. No hay cuentas obligatorias ni login en servidor
+              NavRide.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-white font-semibold text-lg mb-3">
+              2. Datos que tratamos
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <p className="text-white font-medium mb-1">a) Ubicación GPS</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Coordenadas, velocidad y rumbo durante navegación o servicio
+                    foreground (pantalla apagada en navegación activa).
+                  </li>
+                  <li>
+                    Procesado en el dispositivo. NavRide no envía tu posición en
+                    tiempo real a servidores propios.
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-white font-medium mb-1">
+                  b) Rutas GPX y grabaciones
+                </p>
+                <ul className="list-disc pl-5">
+                  <li>Almacenamiento local en tu dispositivo.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-white font-medium mb-1">
+                  c) Preferencias y premium
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Ajustes, plan Free/Pilot, trial y consentimientos —
+                    almacenamiento local.
+                  </li>
+                  <li>
+                    Confirmación de suscripción vía Google Play Billing (SKU
+                    navride_adventure_monthly).
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-white font-medium mb-1">
+                  d) OSRM (requiere conexión)
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    <strong>Cuándo:</strong> importación GPX con adherencia
+                    viaria y ruta de aproximación al track.
+                  </li>
+                  <li>
+                    <strong>Qué:</strong> coordenadas muestreadas del track o
+                    waypoints de ruta.
+                  </li>
+                  <li>
+                    <strong>Para qué:</strong> map matching y aproximación sobre
+                    red viaria.
+                  </li>
+                  <li>
+                    <strong>Servicio:</strong> router.project-osrm.org (público).
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-white font-medium mb-1">e) Mapas online</p>
+                <ul className="list-disc pl-5">
+                  <li>
+                    Peticiones de tiles a CARTO CDN / OpenTopoMap (datos ©
+                    OpenStreetMap contributors).
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-white font-medium mb-1">
+                  f) Open-Meteo (opcional)
+                </p>
+                <ul className="list-disc pl-5">
+                  <li>
+                    Si activas alertas climáticas: ubicación aproximada a
+                    api.open-meteo.com.
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-white font-medium mb-1">
+                  g) Voz / micrófono (opcional)
+                </p>
+                <ul className="list-disc pl-5">
+                  <li>
+                    Motor de voz del sistema Android si activas comandos por voz.
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-white font-medium mb-1">
+                  h) Logs técnicos locales
+                </p>
+                <ul className="list-disc pl-5">
+                  <li>
+                    Errores y eventos en archivos locales; no se suben a NavRide.
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-white font-semibold text-lg mb-3">
+              3. Datos que NO recogemos
+            </h2>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                Sin publicidad, analytics de terceros ni perfiles en servidor
+                NavRide.
+              </li>
+              <li>Sin venta de datos personales.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-white font-semibold text-lg mb-3">
+              4. Permisos Android
+            </h2>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <strong>Ubicación</strong> (ACCESS_FINE_LOCATION /
+                ACCESS_COARSE_LOCATION): navegación GPS.
+              </li>
+              <li>
+                <strong>Servicio en primer plano</strong> (FOREGROUND_SERVICE /
+                FOREGROUND_SERVICE_LOCATION): GPS con pantalla apagada durante
+                navegación activa.
+              </li>
+              <li>
+                <strong>Notificaciones</strong> (POST_NOTIFICATIONS): aviso del
+                servicio de navegación.
+              </li>
+              <li>
+                <strong>Internet</strong> y estado de red: mapas online, OSRM,
+                Open-Meteo, Google Play Billing.
+              </li>
+              <li>
+                <strong>Micrófono</strong> (RECORD_AUDIO): solicitado en runtime
+                si activas comandos por voz.
+              </li>
+              <li>
+                <strong>Facturación</strong> (com.android.vending.BILLING):
+                suscripción NavRide Adventure vía Google Play.
+              </li>
+              <li>
+                <strong>Almacenamiento legacy</strong> (READ_EXTERNAL_STORAGE,
+                maxSdk 32): importar GPX en Android antiguos.
+              </li>
+              <li>
+                <strong>Optimización batería</strong>{" "}
+                (REQUEST_IGNORE_BATTERY_OPTIMIZATIONS): opcional para estabilidad
+                GPS en algunos dispositivos.
+              </li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-white font-semibold text-lg mb-3">
+              5. Terceros
+            </h2>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <strong>Google Play:</strong> pagos y suscripciones.{" "}
+                <a
+                  href="https://policies.google.com/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#FF5A1F] hover:underline"
+                >
+                  Política de Google
+                </a>
+              </li>
+              <li>
+                <strong>OSRM / OpenStreetMap:</strong> enrutado y mapas.
+              </li>
+              <li>
+                <strong>Open-Meteo:</strong> clima opcional.
+              </li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-white font-semibold text-lg mb-3">
+              6. Retención y eliminación
+            </h2>
+            <p>
+              Datos locales hasta que los elimines en la app (Ajustes →
+              Privacidad) o desinstales. Exportar/Eliminar mis datos disponible en
+              la app. Ver{" "}
+              <Link
+                href="/legal/eliminacion-datos"
+                className="text-[#FF5A1F] hover:underline"
+              >
+                política de eliminación de datos
+              </Link>
+              .
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-white font-semibold text-lg mb-3">
+              7. Menores
+            </h2>
+            <p>No destinada a menores de 14 años.</p>
+          </section>
+
+          <section>
+            <h2 className="text-white font-semibold text-lg mb-3">
+              8. Tus derechos (RGPD)
+            </h2>
+            <p>
+              Contacto:{" "}
+              <a
+                href={`mailto:${BRAND.supportEmail}`}
+                className="text-[#FF5A1F] hover:underline"
+              >
+                {BRAND.supportEmail}
+              </a>
+              . Reclamación:{" "}
+              <a
+                href="https://www.aepd.es"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#FF5A1F] hover:underline"
+              >
+                AEPD
+              </a>
+              .
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-white font-semibold text-lg mb-3">
+              9. Actualizaciones
+            </h2>
+            <p>
+              Versión vigente en la app (Ajustes → Legal) y en esta URL pública
+              para Google Play: {BRAND.privacyPolicyPublicUrl}
+            </p>
+          </section>
         </div>
-
-        <div className="rounded-[32px] border border-white/10 bg-white/[0.03] backdrop-blur-3xl p-10">
-
-          <div className="space-y-14 text-zinc-300 leading-relaxed">
-
-            {/* RESPONSABLE */}
-            <div>
-
-              <h2 className="text-3xl font-bold text-white mb-6">
-                Responsable del tratamiento
-              </h2>
-
-              <div className="space-y-3 text-zinc-400 text-lg">
-
-                <p>Daniel Montero Mora (DNI 47704767F)</p>
-
-                <p>navride@outlook.com</p>
-
-                <p>
-                  Carrer de Can Mollet, 5 · 08100 Mollet del Vallès
-                </p>
-
-                <p>
-                  Barcelona · Cataluña · España
-                </p>
-
-              </div>
-
-            </div>
-
-            {/* PRODUCTO */}
-            <div>
-
-              <h2 className="text-3xl font-bold text-white mb-6">
-                Producto
-              </h2>
-
-              <p className="text-zinc-400 text-lg leading-relaxed">
-                NavRide es una aplicación avanzada de navegación GPS para motocicletas,
-                incluyendo rutas GPX, navegación por voz, cuentas de usuario
-                y suscripción PRO mensual.
-              </p>
-
-            </div>
-
-            {/* DATOS */}
-            <div>
-
-              <h2 className="text-3xl font-bold text-white mb-8">
-                Datos tratados
-              </h2>
-
-              <div className="grid gap-5">
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
-                  <div className="text-white text-xl font-bold mb-2">
-                    Identificadores
-                  </div>
-
-                  <div className="text-zinc-400">
-                    UID Firebase y correo electrónico cuando exista.
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
-                  <div className="text-white text-xl font-bold mb-2">
-                    Datos de navegación
-                  </div>
-
-                  <div className="text-zinc-400">
-                    Posición GPS, velocidad, rumbo y precisión procesados principalmente en el dispositivo.
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
-                  <div className="text-white text-xl font-bold mb-2">
-                    Ficheros GPX
-                  </div>
-
-                  <div className="text-zinc-400">
-                    Rutas importadas y almacenadas localmente.
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
-                  <div className="text-white text-xl font-bold mb-2">
-                    Suscripción PRO
-                  </div>
-
-                  <div className="text-zinc-400">
-                    Identificadores de cliente y estado de suscripción asociados al UID.
-                  </div>
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* FINALIDADES */}
-            <div>
-
-              <h2 className="text-3xl font-bold text-white mb-8">
-                Finalidades
-              </h2>
-
-              <div className="space-y-4">
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5 text-zinc-300 text-lg">
-                  Navegación GPS y visualización de mapas.
-                </div>
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5 text-zinc-300 text-lg">
-                  Gestión de rutas GPX y navegación avanzada.
-                </div>
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5 text-zinc-300 text-lg">
-                  Gestión de pagos y suscripción PRO mediante Stripe.
-                </div>
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5 text-zinc-300 text-lg">
-                  Seguridad, estabilidad técnica y prevención de fraude.
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* BASE LEGAL */}
-            <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/[0.05] p-8">
-
-              <h2 className="text-3xl font-bold text-orange-400 mb-6">
-                Base legal · Artículo 6 RGPD
-              </h2>
-
-              <div className="space-y-5 text-zinc-300 text-lg">
-
-                <p>
-                  Ejecución contractual para prestar servicios de navegación y suscripción PRO.
-                </p>
-
-                <p>
-                  Consentimiento para permisos del sistema y aceptación legal.
-                </p>
-
-                <p>
-                  Interés legítimo para seguridad, mantenimiento y prevención de abuso.
-                </p>
-
-                <p>
-                  Obligaciones legales fiscales y contables cuando proceda.
-                </p>
-
-              </div>
-
-            </div>
-
-            {/* PERMISOS */}
-            <div>
-
-              <h2 className="text-3xl font-bold text-white mb-8">
-                Permisos del dispositivo
-              </h2>
-
-              <div className="grid gap-5">
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
-                  <div className="text-white text-xl font-bold mb-2">
-                    Ubicación GPS
-                  </div>
-
-                  <div className="text-zinc-400">
-                    Necesaria para navegación y orientación.
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
-                  <div className="text-white text-xl font-bold mb-2">
-                    Micrófono
-                  </div>
-
-                  <div className="text-zinc-400">
-                    Utilizado únicamente para funciones de voz habilitadas por el usuario.
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
-                  <div className="text-white text-xl font-bold mb-2">
-                    Almacenamiento
-                  </div>
-
-                  <div className="text-zinc-400">
-                    Necesario para importar y guardar archivos GPX.
-                  </div>
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* STRIPE/FIREBASE */}
-            <div>
-
-              <h2 className="text-3xl font-bold text-white mb-6">
-                Proveedores externos
-              </h2>
-
-              <div className="space-y-5">
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
-
-                  <div className="text-white text-2xl font-bold mb-3">
-                    Stripe
-                  </div>
-
-                  <div className="text-zinc-400 text-lg">
-                    Gestión de pagos y suscripciones.
-                  </div>
-
-                </div>
-
-                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
-
-                  <div className="text-white text-2xl font-bold mb-3">
-                    Firebase
-                  </div>
-
-                  <div className="text-zinc-400 text-lg">
-                    Backend, autenticación y estado de suscripción.
-                  </div>
-
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* DERECHOS */}
-            <div>
-
-              <h2 className="text-3xl font-bold text-white mb-6">
-                Derechos del usuario
-              </h2>
-
-              <p className="text-zinc-400 text-lg leading-relaxed">
-                Acceso, rectificación, supresión, oposición, limitación,
-                portabilidad y retirada del consentimiento.
-              </p>
-
-              <div className="mt-6 inline-flex rounded-2xl border border-white/10 bg-white/[0.03] px-6 py-4 text-white text-lg">
-                navride@outlook.com
-              </div>
-
-            </div>
-
-            {/* SEGURIDAD */}
-            <div className="rounded-[28px] border border-green-500/20 bg-green-500/[0.05] p-8">
-
-              <h2 className="text-3xl font-bold text-[#35C759] mb-6">
-                Seguridad
-              </h2>
-
-              <p className="text-zinc-300 text-lg leading-relaxed">
-                NavRide prioriza el tratamiento local en el dispositivo,
-                la minimización de datos enviados al servidor y medidas técnicas
-                razonables para proteger la información frente a accesos no autorizados.
-              </p>
-
-            </div>
-
-            {/* MENORES */}
-            <div>
-
-              <h2 className="text-3xl font-bold text-white mb-6">
-                Menores
-              </h2>
-
-              <p className="text-zinc-400 text-lg leading-relaxed">
-                NavRide no está destinada a menores de 14 años sin autorización
-                de padres o tutores legales.
-              </p>
-
-            </div>
-
-            {/* ACTUALIZACIONES */}
-            <div>
-
-              <h2 className="text-3xl font-bold text-white mb-6">
-                Actualizaciones
-              </h2>
-
-              <p className="text-zinc-400 text-lg leading-relaxed">
-                Esta política puede actualizarse periódicamente.
-                La versión vigente estará disponible en la aplicación y la web oficial.
-              </p>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      </section>
-
+      </article>
     </PageLayout>
   );
 }
