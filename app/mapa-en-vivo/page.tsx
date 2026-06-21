@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { X, AlertTriangle } from "lucide-react";
 
 // ─── Categorías ────────────────────────────────────────────────────────────────
 const CATEGORY: Record<string, { color: string; icon: string; label: string }> = {
@@ -11,8 +12,9 @@ const CATEGORY: Record<string, { color: string; icon: string; label: string }> =
   Tráfico:   { color: "#f97316", icon: "🚗",  label: "Tráfico"   },
 };
 const DEFAULT_CAT = { color: "#a855f7", icon: "📍", label: "Aviso" };
+const CATEGORIES   = Object.keys(CATEGORY);
 
-// ─── Estilo OSM raster inline — no depende de URLs externas de estilos ─────────
+// ─── Estilo OSM raster inline ──────────────────────────────────────────────────
 const OSM_STYLE = {
   version: 8 as const,
   sources: {
@@ -37,17 +39,37 @@ interface RouteAlert {
   is_active: boolean;
 }
 
+interface PendingAlert {
+  lat: number;
+  lng: number;
+}
+
 // ─── Componente ────────────────────────────────────────────────────────────────
 export default function MapaEnVivoPage() {
   const containerRef  = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapRef        = useRef<any>(null);
   const markersRef    = useRef<Map<string, unknown>>(new Map());
-  const [count, setCount]         = useState(0);
-  const [connected, setConnected] = useState(false);
-  const [error, setError]         = useState<string | null>(null);
+
+  const [count, setCount]               = useState(0);
+  const [connected, setConnected]       = useState(false);
+  const [error, setError]               = useState<string | null>(null);
+
+  // Panel de nuevo aviso
+  const [pending, setPending]           = useState<PendingAlert | null>(null);
+  const [newCategory, setNewCategory]   = useState(CATEGORIES[0]);
+  const [newDesc, setNewDesc]           = useState("");
+  const [submitting, setSubmitting]     = useState(false);
+  const [submitMsg, setSubmitMsg]       = useState<{ ok: boolean; text: string } | null>(null);
+  const [reportMode, setReportMode]     = useState(false);
+
+  // ── addMarker / removeMarker (refs para evitar stale closures en RT) ─────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const addMarkerFn = useRef<(alert: RouteAlert) => void>(() => {});
+  const removeMarkerFn = useRef<(id: string) => void>(() => {});
 
   useEffect(() => {
     let cancelled = false;
-    let mapInstance: { remove: () => void } | null = null;
     let channelCleanup: (() => void) | null = null;
 
     async function boot() {
@@ -56,14 +78,13 @@ export default function MapaEnVivoPage() {
       const ml = await import("maplibre-gl");
       if (cancelled || !containerRef.current) return;
 
-      // ── Mapa con estilo OSM raster garantizado ──
       const map = new ml.Map({
         container: containerRef.current,
         style:     OSM_STYLE,
         center:    [-3.7038, 40.4168],
         zoom:      6,
       });
-      mapInstance = map;
+      mapRef.current = map;
 
       // ── Helpers marcadores ──
       function addMarker(alert: RouteAlert) {
@@ -123,6 +144,16 @@ export default function MapaEnVivoPage() {
         setCount(markersRef.current.size);
       }
 
+      // Exponer vía refs para que el submit handler pueda usarlos
+      addMarkerFn.current    = addMarker;
+      removeMarkerFn.current = removeMarker;
+
+      // ── Click en mapa en modo "reportar" ──
+      map.on("click", (e: { lngLat: { lat: number; lng: number } }) => {
+        // El estado reportMode se lee desde el ref para evitar stale closure
+        setPending({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      });
+
       // ── Datos iniciales ──
       map.on("load", async () => {
         if (cancelled) return;
@@ -151,13 +182,13 @@ export default function MapaEnVivoPage() {
             (payload) => {
               if (payload.eventType === "INSERT") {
                 const a = payload.new as RouteAlert;
-                if (a.is_active) addMarker(a);
+                if (a.is_active) addMarkerFn.current(a);
               } else if (payload.eventType === "UPDATE") {
                 const a = payload.new as RouteAlert;
-                removeMarker(a.id);
-                if (a.is_active) addMarker(a);
+                removeMarkerFn.current(a.id);
+                if (a.is_active) addMarkerFn.current(a);
               } else if (payload.eventType === "DELETE") {
-                removeMarker((payload.old as RouteAlert).id);
+                removeMarkerFn.current((payload.old as RouteAlert).id);
               }
             },
           )
@@ -167,7 +198,7 @@ export default function MapaEnVivoPage() {
 
         channelCleanup = () => { void ch.unsubscribe(); };
       } catch {
-        // Sin Realtime si faltan vars — mapa sigue funcionando
+        // Sin Realtime si faltan vars
       }
     }
 
@@ -176,21 +207,57 @@ export default function MapaEnVivoPage() {
     return () => {
       cancelled = true;
       channelCleanup?.();
-      mapInstance?.remove();
+      mapRef.current?.remove();
       markersRef.current.clear();
     };
   }, []);
 
+  // ── Enviar nuevo aviso ────────────────────────────────────────────────────────
+  const handleSubmitAlert = useCallback(async () => {
+    if (!pending || !newDesc.trim()) return;
+    setSubmitting(true);
+    setSubmitMsg(null);
+    try {
+      const supabase = createClient();
+      const { error: insertErr } = await supabase.from("route_alerts").insert({
+        latitude:       pending.lat,
+        longitude:      pending.lng,
+        alert_category: newCategory,
+        description:    newDesc.trim(),
+        is_active:      true,
+      });
+      if (insertErr) throw insertErr;
+      setSubmitMsg({ ok: true, text: "Aviso publicado. Aparecerá en el mapa ahora." });
+      setNewDesc("");
+      setTimeout(() => {
+        setPending(null);
+        setSubmitMsg(null);
+        setReportMode(false);
+      }, 1800);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Error desconocido";
+      setSubmitMsg({ ok: false, text: `No se pudo publicar: ${msg}` });
+    }
+    setSubmitting(false);
+  }, [pending, newCategory, newDesc]);
+
   return (
-    // h-[calc(100vh-80px)] descuenta el navbar fijo (h-20 = 80px en md+)
     <div className="relative w-full" style={{ height: "calc(100vh - 80px)", marginTop: "80px" }}>
 
-      {/* Canvas del mapa — rellena el contenedor completamente */}
+      {/* Canvas del mapa */}
       <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
 
+      {/* Cursor crosshair en modo reporte */}
+      {reportMode && (
+        <div
+          style={{ position: "absolute", inset: 0, cursor: "crosshair", zIndex: 5 }}
+          className="pointer-events-none"
+        />
+      )}
+
       {/* Header flotante */}
-      <div className="absolute top-3 left-3 z-10 flex items-center gap-2 pointer-events-none">
-        <div className="pointer-events-auto bg-[#050608]/90 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-3 shadow-xl">
+      <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
+        <div className="bg-[#050608]/90 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-3 shadow-xl">
           <span className="text-white font-semibold text-sm">Avisos en ruta</span>
           <span className="rounded-full bg-[#f97316] text-white text-xs font-bold px-2.5 py-0.5 min-w-[22px] text-center">
             {count}
@@ -205,17 +272,94 @@ export default function MapaEnVivoPage() {
             </span>
           </span>
         </div>
+
+        {/* Botón reportar aviso */}
+        <button
+          onClick={() => { setReportMode(r => !r); setPending(null); setSubmitMsg(null); }}
+          className={`flex items-center gap-2 px-3 py-2.5 rounded-2xl border shadow-xl text-sm font-semibold transition-colors ${
+            reportMode
+              ? "bg-[#f97316] border-[#f97316] text-white"
+              : "bg-[#050608]/90 border-white/10 text-white/80 hover:text-white backdrop-blur-md"
+          }`}
+        >
+          <AlertTriangle size={15} />
+          {reportMode ? "Cancelar" : "Reportar aviso"}
+        </button>
       </div>
+
+      {/* Instrucción modo reporte */}
+      {reportMode && !pending && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-10 bg-[#050608]/90 backdrop-blur-md border border-[#f97316]/40 rounded-2xl px-5 py-3 shadow-xl">
+          <p className="text-white text-sm text-center">Haz clic en el mapa para marcar la ubicación del aviso</p>
+        </div>
+      )}
+
+      {/* Panel formulario nuevo aviso */}
+      {pending && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 w-[340px] bg-[#050608]/95 backdrop-blur-xl border border-white/15 rounded-2xl p-5 shadow-2xl">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white font-semibold text-sm">Nuevo aviso</h3>
+            <button onClick={() => { setPending(null); setSubmitMsg(null); }} className="text-white/40 hover:text-white">
+              <X size={16} />
+            </button>
+          </div>
+
+          <p className="text-white/40 text-xs mb-4">
+            📍 {pending.lat.toFixed(5)}, {pending.lng.toFixed(5)}
+          </p>
+
+          {/* Selector categoría */}
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            {CATEGORIES.map(cat => {
+              const cfg = CATEGORY[cat];
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setNewCategory(cat)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors ${
+                    newCategory === cat
+                      ? "border-white/40 bg-white/10 text-white font-semibold"
+                      : "border-white/10 text-white/60 hover:border-white/20"
+                  }`}
+                >
+                  <span>{cfg.icon}</span>
+                  <span>{cfg.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Descripción */}
+          <textarea
+            value={newDesc}
+            onChange={e => setNewDesc(e.target.value)}
+            placeholder="Describe el peligro (ej: barro en curva, carretera cortada…)"
+            rows={3}
+            className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-white/30 resize-none mb-3"
+          />
+
+          {submitMsg && (
+            <p className={`text-xs mb-3 ${submitMsg.ok ? "text-green-400" : "text-red-400"}`}>
+              {submitMsg.text}
+            </p>
+          )}
+
+          <button
+            onClick={handleSubmitAlert}
+            disabled={submitting || !newDesc.trim()}
+            className="w-full rounded-full bg-[#f97316] py-2.5 text-white font-semibold text-sm hover:bg-[#f97316]/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {submitting ? "Publicando…" : "Publicar aviso"}
+          </button>
+        </div>
+      )}
 
       {/* Leyenda */}
       <div className="absolute bottom-6 left-3 z-10">
         <div className="bg-[#050608]/90 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-3 shadow-xl space-y-2">
           {Object.entries(CATEGORY).map(([key, cfg]) => (
             <div key={key} className="flex items-center gap-2">
-              <span
-                className="w-3 h-3 rounded-full border-2 border-white/40 shrink-0"
-                style={{ background: cfg.color }}
-              />
+              <span className="w-3 h-3 rounded-full border-2 border-white/40 shrink-0" style={{ background: cfg.color }} />
               <span className="text-white/70 text-xs">{cfg.label}</span>
             </div>
           ))}

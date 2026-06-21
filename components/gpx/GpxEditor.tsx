@@ -573,21 +573,31 @@ export default function GpxEditor() {
     setUploadMsg(null);
     try {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setUploadMsg({ ok: false, text: "Necesitas iniciar sesión." });
+      const { data: { user }, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !user) {
+        setUploadMsg({ ok: false, text: "Necesitas iniciar sesión para enviar rutas." });
         setUploading(false);
         return;
       }
+
+      // 1 — Subir archivo GPX al bucket
       const gpx      = exportGpx(segments, routeTitle);
       const blob     = new Blob([gpx], { type: "application/gpx+xml" });
       const fileName = `${user.id}/${Date.now()}_${routeTitle.replace(/\s+/g, "_")}.gpx`;
-      const { error } = await supabase.storage
+      const { error: storageErr } = await supabase.storage
         .from("gpx")
         .upload(fileName, blob, { contentType: "application/gpx+xml" });
-      if (error) throw error;
+      if (storageErr) {
+        setUploadMsg({ ok: false, text: `Error al subir el archivo: ${storageErr.message}` });
+        setUploading(false);
+        return;
+      }
+
+      // 2 — Obtener URL pública
       const { data: urlData } = supabase.storage.from("gpx").getPublicUrl(fileName);
-      await supabase.from("gpx_routes").insert({
+
+      // 3 — Insertar en gpx_routes y capturar el error correctamente
+      const { error: insertErr } = await supabase.from("gpx_routes").insert({
         author_id:       user.id,
         title:           routeTitle,
         storage_url:     urlData.publicUrl,
@@ -595,9 +605,18 @@ export default function GpxEditor() {
         distance_m:      Math.round(totalKm(segments) * 1000),
         is_public:       false,
       });
-      setUploadMsg({ ok: true, text: "Ruta enviada a NavRide App." });
-    } catch {
-      setUploadMsg({ ok: false, text: "Error al subir. Inténtalo de nuevo." });
+      if (insertErr) {
+        // Borrar el archivo que ya subimos para no dejar huérfanos
+        await supabase.storage.from("gpx").remove([fileName]).catch(() => {});
+        setUploadMsg({ ok: false, text: `Error al guardar la ruta: ${insertErr.message}` });
+        setUploading(false);
+        return;
+      }
+
+      setUploadMsg({ ok: true, text: "✅ Ruta guardada. Abre 'Mis Rutas Web' en la app para descargarla." });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Error desconocido";
+      setUploadMsg({ ok: false, text: `Error inesperado: ${msg}` });
     }
     setUploading(false);
   }, [segments, routeTitle]);
