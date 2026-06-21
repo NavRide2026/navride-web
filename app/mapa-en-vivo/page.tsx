@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Metadata } from "next";
 
 // ─── Categorías ────────────────────────────────────────────────────────────────
 const CATEGORY: Record<string, { color: string; icon: string; label: string }> = {
@@ -12,6 +11,21 @@ const CATEGORY: Record<string, { color: string; icon: string; label: string }> =
   Tráfico:   { color: "#f97316", icon: "🚗",  label: "Tráfico"   },
 };
 const DEFAULT_CAT = { color: "#a855f7", icon: "📍", label: "Aviso" };
+
+// ─── Estilo OSM raster inline — no depende de URLs externas de estilos ─────────
+const OSM_STYLE = {
+  version: 8 as const,
+  sources: {
+    osm: {
+      type: "raster" as const,
+      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      tileSize: 256,
+      attribution: "© OpenStreetMap contributors",
+      maxzoom: 19,
+    },
+  },
+  layers: [{ id: "osm-tiles", type: "raster" as const, source: "osm" }],
+};
 
 interface RouteAlert {
   id: string;
@@ -25,11 +39,11 @@ interface RouteAlert {
 
 // ─── Componente ────────────────────────────────────────────────────────────────
 export default function MapaEnVivoPage() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const markersRef   = useRef<Map<string, unknown>>(new Map());
-  const [count, setCount]       = useState(0);
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const markersRef    = useRef<Map<string, unknown>>(new Map());
+  const [count, setCount]         = useState(0);
   const [connected, setConnected] = useState(false);
-  const [error, setError]       = useState<string | null>(null);
+  const [error, setError]         = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,22 +53,13 @@ export default function MapaEnVivoPage() {
     async function boot() {
       if (!containerRef.current) return;
 
-      // ── CSS MapLibre ──
-      if (!document.querySelector("#maplibre-css")) {
-        const link = document.createElement("link");
-        link.id   = "maplibre-css";
-        link.rel  = "stylesheet";
-        link.href = "https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css";
-        document.head.appendChild(link);
-      }
-
       const ml = await import("maplibre-gl");
       if (cancelled || !containerRef.current) return;
 
-      // ── Mapa ──
+      // ── Mapa con estilo OSM raster garantizado ──
       const map = new ml.Map({
         container: containerRef.current,
-        style:     "https://tiles.openfreemap.org/styles/liberty",
+        style:     OSM_STYLE,
         center:    [-3.7038, 40.4168],
         zoom:      6,
       });
@@ -66,26 +71,28 @@ export default function MapaEnVivoPage() {
         const cfg = CATEGORY[alert.alert_category] ?? DEFAULT_CAT;
 
         const el = document.createElement("div");
-        el.style.cssText = [
-          "width:36px;height:36px;",
-          `background:${cfg.color};`,
-          "border:3px solid white;",
-          "border-radius:50%;",
-          "cursor:pointer;",
-          "display:flex;align-items:center;justify-content:center;",
-          "font-size:15px;",
-          "box-shadow:0 2px 12px rgba(0,0,0,0.55);",
-          "transition:transform .15s;",
-        ].join("");
+        Object.assign(el.style, {
+          width: "36px", height: "36px",
+          background: cfg.color,
+          border: "3px solid white",
+          borderRadius: "50%",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "15px",
+          boxShadow: "0 2px 12px rgba(0,0,0,0.55)",
+          transition: "transform .15s",
+        });
+        el.textContent = cfg.icon;
         el.onmouseenter = () => { el.style.transform = "scale(1.18)"; };
         el.onmouseleave = () => { el.style.transform = "scale(1)"; };
-        el.textContent = cfg.icon;
 
         const fecha = new Date(alert.created_at).toLocaleDateString("es-ES", {
           day: "2-digit", month: "short", year: "numeric",
         });
 
-        const popup = new ml.Popup({ offset: 20, maxWidth: "300px", closeButton: true })
+        const popup = new ml.Popup({ offset: 20, maxWidth: "300px" })
           .setHTML(`
             <div style="font-family:system-ui,sans-serif;padding:6px 4px 2px">
               <span style="display:inline-block;background:${cfg.color};color:#fff;
@@ -160,7 +167,7 @@ export default function MapaEnVivoPage() {
 
         channelCleanup = () => { void ch.unsubscribe(); };
       } catch {
-        // Supabase env vars missing — mapa sigue funcionando sin RT
+        // Sin Realtime si faltan vars — mapa sigue funcionando
       }
     }
 
@@ -175,12 +182,14 @@ export default function MapaEnVivoPage() {
   }, []);
 
   return (
-    <div className="relative w-full h-screen">
-      {/* Mapa */}
-      <div ref={containerRef} className="absolute inset-0" />
+    // h-[calc(100vh-80px)] descuenta el navbar fijo (h-20 = 80px en md+)
+    <div className="relative w-full" style={{ height: "calc(100vh - 80px)", marginTop: "80px" }}>
+
+      {/* Canvas del mapa — rellena el contenedor completamente */}
+      <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
 
       {/* Header flotante */}
-      <div className="absolute top-20 left-4 right-4 z-10 flex items-center justify-between pointer-events-none">
+      <div className="absolute top-3 left-3 z-10 flex items-center gap-2 pointer-events-none">
         <div className="pointer-events-auto bg-[#050608]/90 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-3 shadow-xl">
           <span className="text-white font-semibold text-sm">Avisos en ruta</span>
           <span className="rounded-full bg-[#f97316] text-white text-xs font-bold px-2.5 py-0.5 min-w-[22px] text-center">
@@ -188,17 +197,19 @@ export default function MapaEnVivoPage() {
           </span>
           <span className="flex items-center gap-1.5">
             <span
-              className={`w-2 h-2 rounded-full ${connected ? "bg-green-400" : "bg-white/30"}`}
+              className={`w-2 h-2 rounded-full shrink-0 ${connected ? "bg-green-400" : "bg-white/30"}`}
               style={connected ? { boxShadow: "0 0 6px #4ade80" } : {}}
             />
-            <span className="text-white/50 text-xs">{connected ? "En vivo" : "Conectando…"}</span>
+            <span className="text-white/50 text-xs whitespace-nowrap">
+              {connected ? "En vivo" : "Conectando…"}
+            </span>
           </span>
         </div>
       </div>
 
       {/* Leyenda */}
-      <div className="absolute bottom-8 left-4 z-10">
-        <div className="bg-[#050608]/90 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-3 shadow-xl space-y-2 min-w-[160px]">
+      <div className="absolute bottom-6 left-3 z-10">
+        <div className="bg-[#050608]/90 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-3 shadow-xl space-y-2">
           {Object.entries(CATEGORY).map(([key, cfg]) => (
             <div key={key} className="flex items-center gap-2">
               <span
@@ -213,7 +224,7 @@ export default function MapaEnVivoPage() {
 
       {/* Error toast */}
       {error && (
-        <div className="absolute top-36 left-1/2 -translate-x-1/2 z-20 bg-red-500/90 text-white text-sm px-4 py-2 rounded-xl shadow-lg">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-red-500/90 text-white text-sm px-4 py-2 rounded-xl shadow-lg">
           {error}
         </div>
       )}
