@@ -17,6 +17,7 @@ const PUBLIC_LINKS = [
 const APP_LINKS = [
   { href: "/mi-garaje", label: "Mi Garaje" },
   { href: "/editor-gpx", label: "Editor GPX" },
+  { href: "/mapa-en-vivo", label: "Mapa en tiempo real" },
 ];
 
 export default function Navbar() {

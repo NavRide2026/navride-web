@@ -12,6 +12,7 @@ export const NAV_PUBLIC_LINKS: NavLink[] = [
 export const NAV_APP_LINKS: NavLink[] = [
   { href: "/mi-garaje", label: "Mi Garaje" },
   { href: "/editor-gpx", label: "Editor GPX" },
+  { href: "/mapa-en-vivo", label: "Mapa en tiempo real" },
 ];
 
 export const NAV_LOGIN = { href: "/login", label: "Iniciar Sesión" } as const;
