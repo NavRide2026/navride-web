@@ -588,11 +588,12 @@ export default function GpxEditor() {
       if (error) throw error;
       const { data: urlData } = supabase.storage.from("gpx").getPublicUrl(fileName);
       await supabase.from("gpx_routes").insert({
-        user_id:         user.id,
-        name:            routeTitle,
-        file_url:        urlData.publicUrl,
+        author_id:       user.id,
+        title:           routeTitle,
+        storage_url:     urlData.publicUrl,
         waypoints_count: allPts.length,
-        distance_km:     Math.round(totalKm(segments) * 100) / 100,
+        distance_m:      Math.round(totalKm(segments) * 1000),
+        is_public:       false,
       });
       setUploadMsg({ ok: true, text: "Ruta enviada a NavRide App." });
     } catch {
