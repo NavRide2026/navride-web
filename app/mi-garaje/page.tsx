@@ -39,26 +39,44 @@ function getWeekLabel(iso: string): string {
 }
 
 export default async function MiGarajePage() {
-  const supabase = await createServerSupabaseClient();
+  // Guard: si faltan env vars de Supabase, redirigir a login sin crashear
+  if (
+    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ) {
+    redirect("/login");
+  }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user: { id: string; email?: string } | null = null;
+
+  try {
+    const supabase = await createServerSupabaseClient();
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    redirect("/login");
+  }
 
   if (!user) {
     redirect("/login");
   }
 
-  const { data: sessions } = await supabase
-    .from("recorded_sessions")
-    .select(
-      "id, created_at, duration_seconds, distance_meters, max_speed_kmh, avg_speed_kmh"
-    )
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(20);
+  let allSessions: RecordedSession[] = [];
 
-  const allSessions: RecordedSession[] = sessions ?? [];
+  try {
+    const supabase = await createServerSupabaseClient();
+    const { data: sessions } = await supabase
+      .from("recorded_sessions")
+      .select(
+        "id, created_at, duration_seconds, distance_meters, max_speed_kmh, avg_speed_kmh"
+      )
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    allSessions = sessions ?? [];
+  } catch {
+    allSessions = [];
+  }
 
   // Calcular stats globales
   const totalKm =

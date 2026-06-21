@@ -22,38 +22,42 @@ export default function LoginPage() {
     setSuccess(null);
     setLoading(true);
 
-    const supabase = createClient();
+    try {
+      const supabase = createClient();
 
-    if (mode === "login") {
-      const { error: err } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (err) {
-        setError("Email o contraseña incorrectos.");
-      } else {
-        router.push("/mi-garaje");
-        router.refresh();
-      }
-    } else {
-      const { error: err } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-      if (err) {
-        if (err.message.includes("already registered")) {
-          setError("Este email ya está registrado. Inicia sesión.");
+      if (mode === "login") {
+        const { error: err } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (err) {
+          setError("Email o contraseña incorrectos.");
         } else {
-          setError(err.message);
+          router.push("/mi-garaje");
+          router.refresh();
         }
       } else {
-        setSuccess(
-          "Cuenta creada. Revisa tu email para confirmar tu dirección."
-        );
+        const { error: err } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (err) {
+          if (err.message.includes("already registered")) {
+            setError("Este email ya está registrado. Inicia sesión.");
+          } else {
+            setError(err.message);
+          }
+        } else {
+          setSuccess(
+            "Cuenta creada. Revisa tu email para confirmar tu dirección."
+          );
+        }
       }
+    } catch {
+      setError("Error de conexión con el servidor. Inténtalo de nuevo.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
