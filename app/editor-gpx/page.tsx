@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import GpxEditor from "@/components/gpx/GpxEditor";
 import type { Metadata } from "next";
 
