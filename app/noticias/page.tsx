@@ -15,7 +15,7 @@ export default function NoticiasPage() {
         <SectionHeading
           eyebrow="Noticias"
           title="Actualizaciones NavRide"
-          description="Estructura preparada para futuras publicaciones. Editar lib/site/constants.ts."
+          description="Todo lo que está pasando en NavRide, contado sin filtros."
         />
 
         <div className="space-y-6">
@@ -37,9 +37,8 @@ export default function NoticiasPage() {
           ))}
         </div>
 
-        <p className="mt-10 text-white/40 text-xs">
-          Para publicar noticias, añade entradas a NEWS_ITEMS en{" "}
-          <code className="text-white/60">lib/site/constants.ts</code>.
+        <p className="mt-10 text-white/30 text-xs">
+          Más novedades próximamente.
         </p>
       </div>
     </PageLayout>

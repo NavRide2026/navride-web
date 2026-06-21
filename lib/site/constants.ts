@@ -151,49 +151,46 @@ export type RoadmapStatus = "investigacion" | "desarrollo" | "completado";
 
 export const ROADMAP_ITEMS: {
   title: string;
+  subtitle?: string;
   status: RoadmapStatus;
   note?: string;
 }[] = [
   {
-    title: "Navegación GPX online + trial 7 días",
+    title: "Navegación GPX total + 7 días Gratis",
     status: "completado",
   },
   {
-    title: "Modo Rally por dificultad de tramo",
+    title: "Modo Rally: Clasificación por dificultad de tramo",
     status: "completado",
   },
   {
-    title: "Mapas offline (.mbtiles + corredor Pilot)",
+    title: "Mapas Offline (¡Para cuando no hay cobertura!)",
     status: "completado",
   },
   {
-    title: "Suscripción NavRide Adventure (Google Play)",
-    status: "completado",
-  },
-  {
-    title: "QA campo beta cerrada",
+    title: "Pruebas extremas sobre el terreno",
+    subtitle: "Puliendo hasta el último detalle en rutas reales antes de abrir las puertas a todo el mundo.",
     status: "desarrollo",
-    note: "En curso antes de producción Play",
   },
   {
-    title: "Grabación de rutas por voz",
+    title: "Notas de voz en ruta",
+    subtitle: "Estamos estudiando cómo permitirte grabar avisos de peligros o desvíos con la voz mientras pilotas, sin soltar el manillar.",
     status: "investigacion",
-    note: "Fase futura — importar GPX en beta actual",
   },
 ];
 
 export const NEWS_ITEMS = [
   {
-    date: "2026-05-30",
-    title: "Documentación legal OEM alineada",
+    date: "2026-06-21",
+    title: "¡La Beta Privada ya está aquí!",
     excerpt:
-      "Política de privacidad pública, catálogo legal único y preparación Play Store Data Safety.",
+      "Hemos arrancado motores. Un grupo exclusivo de pilotos ya está probando NavRide en el barro. Navegación off-road pura, importación de GPX, modo Rally y mapas sin conexión para llegar donde Google Maps se rinde. ¡Muy pronto abriremos plazas!",
   },
   {
-    date: "2026-05",
-    title: "Beta cerrada v0.9.0",
+    date: "2026-05-30",
+    title: "Preparando el terreno legal",
     excerpt:
-      "Navegación offroad, GPX, rally y suscripción Pilot vía Google Play Billing.",
+      "Nos tomamos tu privacidad tan en serio como tu seguridad en la moto. Hemos adaptado todas nuestras políticas para cumplir con los estándares más estrictos y proteger tus datos de ruta.",
   },
 ];
 

@@ -23,7 +23,7 @@ export default function RoadmapPage() {
         <SectionHeading
           eyebrow="Roadmap"
           title="Evolución del ecosistema"
-          description="Hitos verificados del proyecto. Editable en lib/site/constants.ts."
+          description="Aquí puedes ver en qué punto del camino estamos. Sin humo, sin promesas vacías."
         />
 
         {groups.map((status) => {
@@ -42,8 +42,8 @@ export default function RoadmapPage() {
                     className="rounded-xl border border-white/10 bg-[#101114] p-4"
                   >
                     <p className="text-white font-medium">{item.title}</p>
-                    {item.note ? (
-                      <p className="text-white/50 text-sm mt-1">{item.note}</p>
+                    {item.subtitle ? (
+                      <p className="text-white/50 text-sm mt-1">{item.subtitle}</p>
                     ) : null}
                   </li>
                 ))}
@@ -52,10 +52,8 @@ export default function RoadmapPage() {
           );
         })}
 
-        <p className="text-white/40 text-xs">
-          Para añadir hitos, edita{" "}
-          <code className="text-white/60">lib/site/constants.ts</code> →{" "}
-          ROADMAP_ITEMS.
+        <p className="text-white/30 text-xs mt-8">
+          El roadmap se actualiza con cada versión de la app.
         </p>
       </div>
     </PageLayout>
