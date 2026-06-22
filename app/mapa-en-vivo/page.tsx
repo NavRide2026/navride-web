@@ -59,6 +59,7 @@ export default function MapaEnVivoPage() {
   const [pending, setPending]           = useState<PendingAlert | null>(null);
   const [newCategory, setNewCategory]   = useState(CATEGORIES[0]);
   const [newDesc, setNewDesc]           = useState("");
+  const [showDesc, setShowDesc]         = useState(false);
   const [submitting, setSubmitting]     = useState(false);
   const [submitMsg, setSubmitMsg]       = useState<{ ok: boolean; text: string } | null>(null);
   const [reportMode, setReportMode]     = useState(false);
@@ -214,7 +215,7 @@ export default function MapaEnVivoPage() {
 
   // ── Enviar nuevo aviso ────────────────────────────────────────────────────────
   const handleSubmitAlert = useCallback(async () => {
-    if (!pending || !newDesc.trim()) return;
+    if (!pending) return;
     setSubmitting(true);
     setSubmitMsg(null);
     try {
@@ -224,23 +225,31 @@ export default function MapaEnVivoPage() {
         longitude:        pending.lng,
         alert_category:   newCategory,
         alert_type:       "general",
-        description:      newDesc.trim(),
+        description:      newDesc.trim() || null,
         is_active:        true,
         confidence_score: 1.0,
         votes_up:         0,
         votes_down:       0,
       });
-      if (insertErr) throw insertErr;
-      setSubmitMsg({ ok: true, text: "Aviso publicado. Aparecerá en el mapa ahora." });
+      if (insertErr) {
+        // PostgrestError has .message and .details — expose them fully
+        const detail = insertErr.details ? ` (${insertErr.details})` : "";
+        setSubmitMsg({ ok: false, text: `Error Supabase: ${insertErr.message}${detail}` });
+        setSubmitting(false);
+        return;
+      }
+      setSubmitMsg({ ok: true, text: "✅ Aviso publicado." });
       setNewDesc("");
+      setShowDesc(false);
       setTimeout(() => {
         setPending(null);
         setSubmitMsg(null);
         setReportMode(false);
       }, 1800);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Error desconocido";
-      setSubmitMsg({ ok: false, text: `No se pudo publicar: ${msg}` });
+      // Fallback for network errors
+      const msg = (e as { message?: string })?.message ?? String(e);
+      setSubmitMsg({ ok: false, text: `Error de red: ${msg}` });
     }
     setSubmitting(false);
   }, [pending, newCategory, newDesc]);
@@ -303,7 +312,7 @@ export default function MapaEnVivoPage() {
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 w-[340px] bg-[#050608]/95 backdrop-blur-xl border border-white/15 rounded-2xl p-5 shadow-2xl">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-white font-semibold text-sm">Nuevo aviso</h3>
-            <button onClick={() => { setPending(null); setSubmitMsg(null); }} className="text-white/40 hover:text-white">
+            <button onClick={() => { setPending(null); setSubmitMsg(null); setShowDesc(false); setNewDesc(""); }} className="text-white/40 hover:text-white">
               <X size={16} />
             </button>
           </div>
@@ -333,24 +342,33 @@ export default function MapaEnVivoPage() {
             })}
           </div>
 
-          {/* Descripción */}
-          <textarea
-            value={newDesc}
-            onChange={e => setNewDesc(e.target.value)}
-            placeholder="Describe el peligro (ej: barro en curva, carretera cortada…)"
-            rows={3}
-            className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-white/30 resize-none mb-3"
-          />
+          {/* Descripción — opcional, oculta por defecto */}
+          <button
+            onClick={() => setShowDesc(v => !v)}
+            className="text-white/40 hover:text-white/70 text-xs mb-2 flex items-center gap-1 transition-colors"
+          >
+            <span>{showDesc ? "▼" : "▶"}</span>
+            <span>Añadir detalle (opcional)</span>
+          </button>
+          {showDesc && (
+            <textarea
+              value={newDesc}
+              onChange={e => setNewDesc(e.target.value)}
+              placeholder="Ej: barro en curva, carretera cortada…"
+              rows={2}
+              className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-white/30 resize-none mb-3"
+            />
+          )}
 
           {submitMsg && (
-            <p className={`text-xs mb-3 ${submitMsg.ok ? "text-green-400" : "text-red-400"}`}>
+            <p className={`text-xs mb-3 break-words ${submitMsg.ok ? "text-green-400" : "text-red-400"}`}>
               {submitMsg.text}
             </p>
           )}
 
           <button
             onClick={handleSubmitAlert}
-            disabled={submitting || !newDesc.trim()}
+            disabled={submitting}
             className="w-full rounded-full bg-[#f97316] py-2.5 text-white font-semibold text-sm hover:bg-[#f97316]/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {submitting ? "Publicando…" : "Publicar aviso"}
