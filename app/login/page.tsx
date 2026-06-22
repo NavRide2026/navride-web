@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -9,7 +8,6 @@ import { createClient } from "@/lib/supabase/client";
 type Mode = "login" | "register";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,8 +33,10 @@ export default function LoginPage() {
         if (err) {
           setError("Email o contraseña incorrectos.");
         } else {
-          router.push("/mi-garaje");
-          router.refresh();
+          // Hard redirect: fuerza al browser a hacer una petición nueva al servidor
+          // con las cookies de sesión ya escritas por Supabase. router.push() + refresh()
+          // causaba que la página quedara congelada porque el servidor aún no veía la sesión.
+          window.location.href = "/mi-garaje";
         }
       } else {
         const { error: err } = await supabase.auth.signUp({
