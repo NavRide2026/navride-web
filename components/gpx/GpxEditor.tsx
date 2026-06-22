@@ -105,19 +105,25 @@ async function osrmRoute(waypoints: LngLat[]): Promise<LngLat[]> {
   const coords = waypoints
     .map(([lng, lat]) => `${lng.toFixed(6)},${lat.toFixed(6)}`)
     .join(";");
-  try {
-    const res = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`,
-      { signal: AbortSignal.timeout(7000) },
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.code === "Ok" && data.routes?.[0]?.geometry?.coordinates?.length > 0) {
-      return data.routes[0].geometry.coordinates as LngLat[];
+
+  // Try driving first (paved roads), then foot (dirt tracks/paths), then bike
+  const profiles = ["driving", "foot", "bike"];
+  for (const profile of profiles) {
+    try {
+      const res = await fetch(
+        `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson`,
+        { signal: AbortSignal.timeout(7000) },
+      );
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.code === "Ok" && data.routes?.[0]?.geometry?.coordinates?.length > 0) {
+        return data.routes[0].geometry.coordinates as LngLat[];
+      }
+    } catch {
+      // network error or timeout — try next profile
     }
-  } catch {
-    // network error / no road — fall through to straight lines
   }
+  // All profiles failed — fall back to straight lines
   return waypoints;
 }
 

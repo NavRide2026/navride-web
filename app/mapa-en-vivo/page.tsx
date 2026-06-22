@@ -220,11 +220,15 @@ export default function MapaEnVivoPage() {
     try {
       const supabase = createClient();
       const { error: insertErr } = await supabase.from("route_alerts").insert({
-        latitude:       pending.lat,
-        longitude:      pending.lng,
-        alert_category: newCategory,
-        description:    newDesc.trim(),
-        is_active:      true,
+        latitude:         pending.lat,
+        longitude:        pending.lng,
+        alert_category:   newCategory,
+        alert_type:       "general",
+        description:      newDesc.trim(),
+        is_active:        true,
+        confidence_score: 1.0,
+        votes_up:         0,
+        votes_down:       0,
       });
       if (insertErr) throw insertErr;
       setSubmitMsg({ ok: true, text: "Aviso publicado. Aparecerá en el mapa ahora." });
