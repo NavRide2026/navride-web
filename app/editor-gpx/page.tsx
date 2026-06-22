@@ -10,8 +10,9 @@ export const metadata: Metadata = {
 
 export default function EditorGpxPage() {
   return (
-    <main className="h-screen pt-16 md:pt-20 flex flex-col bg-[#050608]">
+    // fixed inset-0 z-50 → cubre la navbar y ocupa exactamente 100vw × 100vh
+    <div className="fixed inset-0 z-50 bg-[#050608] flex flex-col">
       <GpxEditor />
-    </main>
+    </div>
   );
 }
