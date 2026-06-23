@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { X, AlertTriangle, List, Map as MapIcon, ChevronRight, LocateFixed } from "lucide-react";
+import { X, AlertTriangle, List, Map as MapIcon, LocateFixed } from "lucide-react";
 
 // ─── Catálogo (paridad con Flutter RouteAlertCatalog) ──────────────────────────
 const CATALOG = {
@@ -47,6 +47,7 @@ interface RouteAlert {
   location_name: string | null;
   created_at: string;
   is_active: boolean;
+  votes_down: number;
 }
 
 interface PendingDrop { lat: number; lng: number }
@@ -117,6 +118,9 @@ export default function MapaEnVivoPage() {
   const [connected, setConnected]       = useState(false);
   const [error, setError]               = useState<string | null>(null);
 
+  // Cursor de tiempo para polling incremental (solo alertas nuevas)
+  const lastPollTsRef = useRef<string | null>(null);
+
   // Vista: "map" | "list"
   const [view, setView]                 = useState<"map" | "list">("map");
 
@@ -125,6 +129,9 @@ export default function MapaEnVivoPage() {
 
   // Filtro activo en el mapa (null = todos)
   const [mapFilter, setMapFilter]       = useState<CategoryKey | null>(null);
+
+  // Botón de localización
+  const [locating, setLocating]         = useState(false);
 
   // Panel de reporte
   const [reportMode, setReportMode]     = useState(false);
@@ -212,6 +219,7 @@ export default function MapaEnVivoPage() {
               </p>
               ${alert.description ? `<p style="margin:4px 0 0;font-size:11px;color:#888;font-style:italic">${alert.description}</p>` : ""}
               <p style="margin:6px 0 0;font-size:10px;color:#bbb">${dateStr}</p>
+              <button onclick="window.__navrideVoteDown('${alert.id}', ${alert.votes_down ?? 0})" style="margin-top:8px;width:100%;padding:6px 0;background:#15803d18;border:1px solid #16a34a40;border-radius:8px;color:#4ade80;font-size:11px;font-weight:600;cursor:pointer;font-family:system-ui,sans-serif">✓ Ya no está</button>
             </div>
           `);
 
@@ -231,6 +239,21 @@ export default function MapaEnVivoPage() {
 
       addMarkerFn.current    = addMarker;
       removeMarkerFn.current = removeMarker;
+
+      // Exponer vote-down para los botones HTML de los popups de MapLibre
+      ;(window as any).__navrideVoteDown = async (id: string, currentVotesDown: number) => {
+        const newDown = currentVotesDown + 1;
+        const update: Record<string, unknown> = { votes_down: newDown };
+        if (newDown >= 3) update.is_active = false;
+        const supabase = createClient();
+        await supabase.from("route_alerts").update(update).eq("id", id);
+        if (newDown >= 3) {
+          removeMarkerFn.current(id);
+          setAlerts(prev => prev.filter(a => a.id !== id));
+        } else {
+          setAlerts(prev => prev.map(a => a.id === id ? { ...a, votes_down: newDown } : a));
+        }
+      };
 
       // ── Click: solo en modo reporte ──
       map.on("click", (e: { lngLat: { lat: number; lng: number } }) => {
@@ -253,6 +276,13 @@ export default function MapaEnVivoPage() {
           const loaded = (data ?? []) as RouteAlert[];
           setAlerts(loaded);
           loaded.forEach(addMarker);
+          // Inicializar cursor de polling — primera alerta es la más reciente (ORDER DESC)
+          if (loaded.length > 0) {
+            lastPollTsRef.current = loaded[0].created_at;
+          } else {
+            // Sin alertas: cursor = hace 1 hora para que el primer poll sea ligero
+            lastPollTsRef.current = new Date(Date.now() - 3_600_000).toISOString();
+          }
         } catch (e) {
           if (!cancelled) setError("No se pudieron cargar los avisos.");
           console.error(e);
@@ -312,8 +342,56 @@ export default function MapaEnVivoPage() {
       channelCleanup?.();
       mapRef.current?.remove();
       markersRef.current.clear();
+      delete (window as any).__navrideVoteDown;
     };
   }, []);
+
+  // ── Polling de respaldo: alertas nuevas cada 3 s (fallback si Realtime cae) ──
+  useEffect(() => {
+    const supabase = createClient();
+    let cancelled = false;
+
+    const poll = async () => {
+      if (cancelled) return;
+      const ts = lastPollTsRef.current;
+      if (ts === null) return; // carga inicial aún no terminó
+      try {
+        const { data } = await supabase
+          .from("route_alerts")
+          .select("*")
+          .eq("is_active", true)
+          .gt("created_at", ts)
+          .order("created_at", { ascending: false })
+          .limit(100);
+
+        if (cancelled || !data || data.length === 0) return;
+
+        const fresh = data as RouteAlert[];
+        // Avanzar cursor al más reciente (lista viene DESC)
+        lastPollTsRef.current = fresh[0].created_at;
+
+        setAlerts(prev => {
+          const byId = new Map(prev.map(a => [a.id, a]));
+          let anyNew = false;
+          for (const a of fresh) {
+            if (!byId.has(a.id)) {
+              addMarkerFn.current(a);
+              anyNew = true;
+            }
+            byId.set(a.id, a);
+          }
+          if (!anyNew) return prev;
+          return Array.from(byId.values()).filter(a => a.is_active);
+        });
+      } catch { /* error de red — silencioso, el siguiente ciclo lo reintentará */ }
+    };
+
+    const id = setInterval(() => { poll().catch(() => {}); }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Filtro de marcadores ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -350,9 +428,18 @@ export default function MapaEnVivoPage() {
       };
       if (newDesc.trim()) payload.description = newDesc.trim();
 
-      const { error: insertErr } = await supabase
+      let { error: insertErr } = await supabase
         .from("route_alerts")
         .insert(payload);
+
+      // Si Supabase no reconoce location_name (cache de schema desactualizada),
+      // reintentamos sin ese campo para que el aviso se publique siempre.
+      if (insertErr?.message?.includes("location_name")) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { location_name: _dropped, ...payloadFallback } = payload;
+        const retry = await supabase.from("route_alerts").insert(payloadFallback);
+        insertErr = retry.error;
+      }
 
       if (insertErr) {
         const detail = insertErr.details ? ` (${insertErr.details})` : "";
@@ -375,6 +462,43 @@ export default function MapaEnVivoPage() {
     setSubmitting(false);
   }, [pending, newCategory, newType, newDesc]);
 
+  // ── Votar "ya no está" (lista y mapa) ──────────────────────────────────────
+  const handleVoteDown = useCallback(async (alert: RouteAlert) => {
+    const newDown = (alert.votes_down ?? 0) + 1;
+    const update: Record<string, unknown> = { votes_down: newDown };
+    if (newDown >= 3) update.is_active = false;
+    const supabase = createClient();
+    await supabase.from("route_alerts").update(update).eq("id", alert.id);
+    if (newDown >= 3) {
+      removeMarkerFn.current(alert.id);
+      setAlerts(prev => prev.filter(a => a.id !== alert.id));
+    } else {
+      setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, votes_down: newDown } : a));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDeactivate = useCallback(async (alert: RouteAlert) => {
+    const supabase = createClient();
+    await supabase.from("route_alerts").update({ is_active: false }).eq("id", alert.id);
+    removeMarkerFn.current(alert.id);
+    setAlerts(prev => prev.filter(a => a.id !== alert.id));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Centrar en mi posición ──────────────────────────────────────────────────
+  const handleLocate = useCallback(() => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { longitude, latitude } = pos.coords;
+        mapRef.current?.flyTo({ center: [longitude, latitude], zoom: 14, duration: 1400 });
+        setLocating(false);
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  }, []);
+
   // ── Conteos por categoría ────────────────────────────────────────────────────
   const countByCat = CATEGORIES.reduce((acc, cat) => {
     acc[cat] = alerts.filter(a => a.is_active && a.alert_category === cat).length;
@@ -390,7 +514,7 @@ export default function MapaEnVivoPage() {
       <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
 
       {/* ── Header flotante ── */}
-      <div className="absolute top-3 left-3 right-3 z-10 flex items-center gap-2 flex-wrap">
+      <div className="absolute top-3 left-3 right-3 z-10 flex items-center gap-2 flex-nowrap overflow-x-auto scrollbar-hide">
         {/* Badge total */}
         <div className="bg-[#050608]/90 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-3 shadow-xl">
           <span className="text-white font-semibold text-sm">Avisos</span>
@@ -440,7 +564,7 @@ export default function MapaEnVivoPage() {
 
       {/* ── Filtro de categorías en el mapa ── */}
       {view === "map" && (
-        <div className="absolute top-20 left-3 z-10 flex flex-col gap-1.5">
+        <div className="absolute top-[72px] left-3 z-10 flex flex-col gap-1.5">
           <button
             onClick={() => setMapFilter(null)}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold border shadow transition-colors ${
@@ -605,13 +729,25 @@ export default function MapaEnVivoPage() {
               return (
                 <div className="p-4 space-y-3">
                   {filtered.map(alert => (
-                    <AlertCard key={alert.id} alert={alert} />
+                    <AlertCard key={alert.id} alert={alert} onVoteDown={handleVoteDown} onDeactivate={handleDeactivate} />
                   ))}
                 </div>
               );
             })()}
           </div>
         </div>
+      )}
+
+      {/* ── Botón centrar en mi posición ── */}
+      {view === "map" && (
+        <button
+          onClick={handleLocate}
+          disabled={locating}
+          title="Centrar en mi posición"
+          className="absolute bottom-6 left-3 z-10 w-11 h-11 rounded-2xl bg-[#050608]/90 backdrop-blur-md border border-white/10 shadow-xl flex items-center justify-center text-white/70 hover:text-white hover:border-white/30 transition-colors disabled:opacity-40"
+        >
+          <LocateFixed size={18} className={locating ? "animate-spin" : ""} />
+        </button>
       )}
 
       {/* ── Leyenda (solo mapa) ── */}
@@ -640,7 +776,16 @@ export default function MapaEnVivoPage() {
 }
 
 // ─── AlertCard (vista lista web) ──────────────────────────────────────────────
-function AlertCard({ alert }: { alert: RouteAlert }) {
+function AlertCard({
+  alert,
+  onVoteDown,
+  onDeactivate,
+}: {
+  alert: RouteAlert;
+  onVoteDown: (alert: RouteAlert) => void;
+  onDeactivate: (alert: RouteAlert) => void;
+}) {
+  const [confirmDel, setConfirmDel] = useState(false);
   const cfg = CATALOG[alert.alert_category as CategoryKey]
     ?? { color: "#a855f7", icon: "📍", label: "Aviso" };
   const typeLabel = getTypeLabel(alert.alert_category, alert.alert_type);
@@ -671,7 +816,46 @@ function AlertCard({ alert }: { alert: RouteAlert }) {
         </p>
       </div>
 
-      <ChevronRight size={14} className="text-white/20 shrink-0 mt-1" />
+      {/* Acciones */}
+      <div className="flex flex-col items-end gap-1.5 shrink-0 mt-0.5">
+        {/* Papelera admin + confirmación inline */}
+        {!confirmDel ? (
+          <button
+            onClick={() => setConfirmDel(true)}
+            title="Eliminar aviso"
+            className="text-white/20 hover:text-red-400 text-sm transition-colors leading-none"
+          >
+            🗑
+          </button>
+        ) : (
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-white/50 text-[10px] whitespace-nowrap">¿Eliminar?</span>
+            <div className="flex gap-1">
+              <button
+                onClick={() => { onDeactivate(alert); setConfirmDel(false); }}
+                className="text-[10px] font-bold text-red-400 border border-red-400/40 rounded px-1.5 py-0.5 hover:bg-red-400/10 transition-colors"
+              >
+                Sí
+              </button>
+              <button
+                onClick={() => setConfirmDel(false)}
+                className="text-[10px] text-white/50 border border-white/10 rounded px-1.5 py-0.5 hover:bg-white/5 transition-colors"
+              >
+                No
+              </button>
+            </div>
+          </div>
+        )}
+        {/* Botón "ya no está" */}
+        {!confirmDel && (
+          <button
+            onClick={() => onVoteDown(alert)}
+            className="text-[10px] text-white/40 hover:text-green-400 transition-colors text-right leading-tight"
+          >
+            ✓ Ya no<br />está
+          </button>
+        )}
+      </div>
     </div>
   );
 }
