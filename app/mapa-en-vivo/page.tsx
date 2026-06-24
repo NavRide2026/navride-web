@@ -589,6 +589,11 @@ export default function MapaEnVivoPage() {
               {connected ? "En vivo" : "Conectando…"}
             </span>
           </span>
+          {isAdmin && (
+            <span className="rounded-full bg-[#f97316]/15 border border-[#f97316]/30 text-[#f97316] text-[9px] font-bold px-2 py-0.5 tracking-widest whitespace-nowrap">
+              ADMIN
+            </span>
+          )}
         </div>
 
         {/* Botón lista */}
@@ -799,21 +804,17 @@ export default function MapaEnVivoPage() {
         </div>
       )}
 
-      {/* ── Botón centrar en mi posición ── */}
+      {/* ── Botón centrar posición + Leyenda (lado derecho) ── */}
       {view === "map" && (
-        <button
-          onClick={handleLocate}
-          disabled={locating}
-          title="Centrar en mi posición"
-          className="absolute bottom-6 left-3 z-10 w-11 h-11 rounded-2xl bg-[#050608]/90 backdrop-blur-md border border-white/10 shadow-xl flex items-center justify-center text-white/70 hover:text-white hover:border-white/30 transition-colors disabled:opacity-40"
-        >
-          <LocateFixed size={18} className={locating ? "animate-spin" : ""} />
-        </button>
-      )}
-
-      {/* ── Leyenda (solo mapa) ── */}
-      {view === "map" && (
-        <div className="absolute bottom-6 right-3 z-10">
+        <div className="absolute bottom-6 right-3 z-10 flex flex-col items-end gap-2">
+          <button
+            onClick={handleLocate}
+            disabled={locating}
+            title="Centrar en mi posición"
+            className="w-11 h-11 rounded-2xl bg-[#050608]/90 backdrop-blur-md border border-white/10 shadow-xl flex items-center justify-center text-white/70 hover:text-white hover:border-white/30 transition-colors disabled:opacity-40"
+          >
+            <LocateFixed size={18} className={locating ? "animate-spin" : ""} />
+          </button>
           <div className="bg-[#050608]/90 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-3 shadow-xl space-y-2">
             {CATEGORIES.map(cat => (
               <div key={cat} className="flex items-center gap-2">
@@ -833,12 +834,6 @@ export default function MapaEnVivoPage() {
         </div>
       )}
 
-      {/* ── Badge ADMIN ── */}
-      {isAdmin && (
-        <div className="absolute top-3 right-3 z-20 bg-[#f97316] text-white text-[11px] font-bold px-3 py-1 rounded-full shadow-xl tracking-widest">
-          ADMIN
-        </div>
-      )}
     </div>
   );
 }
