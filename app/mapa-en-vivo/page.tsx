@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { X, AlertTriangle, List, Map as MapIcon, LocateFixed } from "lucide-react";
+import { getUserRole } from "@/lib/auth/get-user-role";
 
 // ─── Catálogo (paridad con Flutter RouteAlertCatalog) ──────────────────────────
 const CATALOG = {
@@ -130,6 +131,9 @@ export default function MapaEnVivoPage() {
   // Filtro activo en el mapa (null = todos)
   const [mapFilter, setMapFilter]       = useState<CategoryKey | null>(null);
 
+  // Rol del usuario
+  const [isAdmin, setIsAdmin]           = useState(false);
+
   // Botón de localización
   const [locating, setLocating]         = useState(false);
 
@@ -148,6 +152,14 @@ export default function MapaEnVivoPage() {
   useEffect(() => {
     setNewType(CATALOG[newCategory].types[0].id);
   }, [newCategory]);
+
+  // Comprobar rol del usuario al montar
+  useEffect(() => {
+    const supabase = createClient();
+    getUserRole(supabase).then((role) => {
+      setIsAdmin(role === "admin");
+    });
+  }, []);
 
   // ── Funciones de marcadores (refs para evitar stale closures) ────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -545,21 +557,23 @@ export default function MapaEnVivoPage() {
           {view === "list" ? "Mapa" : "Lista"}
         </button>
 
-        {/* Botón reportar */}
-        <button
-          onClick={() => {
-            setReportMode(r => { reportModeRef.current = !r; return !r; });
-            setPending(null); setSubmitMsg(null);
-          }}
-          className={`flex items-center gap-2 px-3 py-2.5 rounded-2xl border shadow-xl text-sm font-semibold transition-colors ${
-            reportMode
-              ? "bg-[#f97316] border-[#f97316] text-white"
-              : "bg-[#050608]/90 border-white/10 text-white/80 hover:text-white backdrop-blur-md"
-          }`}
-        >
-          <AlertTriangle size={15} />
-          {reportMode ? "Cancelar" : "Reportar"}
-        </button>
+        {/* Botón reportar — solo admins */}
+        {isAdmin && (
+          <button
+            onClick={() => {
+              setReportMode(r => { reportModeRef.current = !r; return !r; });
+              setPending(null); setSubmitMsg(null);
+            }}
+            className={`flex items-center gap-2 px-3 py-2.5 rounded-2xl border shadow-xl text-sm font-semibold transition-colors ${
+              reportMode
+                ? "bg-[#f97316] border-[#f97316] text-white"
+                : "bg-[#050608]/90 border-white/10 text-white/80 hover:text-white backdrop-blur-md"
+            }`}
+          >
+            <AlertTriangle size={15} />
+            {reportMode ? "Cancelar" : "Reportar"}
+          </button>
+        )}
       </div>
 
       {/* ── Filtro de categorías en el mapa ── */}
@@ -602,8 +616,8 @@ export default function MapaEnVivoPage() {
         </div>
       )}
 
-      {/* ── Instrucción modo reporte ── */}
-      {reportMode && !pending && view === "map" && (
+      {/* ── Instrucción modo reporte — solo admins ── */}
+      {isAdmin && reportMode && !pending && view === "map" && (
         <div className="absolute top-[4.5rem] left-1/2 -translate-x-1/2 z-10 bg-[#050608]/90 backdrop-blur-md border border-[#f97316]/40 rounded-2xl px-5 py-3 shadow-xl">
           <p className="text-white text-sm text-center flex items-center gap-2">
             <LocateFixed size={14} className="text-[#f97316] shrink-0" />
@@ -612,8 +626,8 @@ export default function MapaEnVivoPage() {
         </div>
       )}
 
-      {/* ── Panel de reporte ── */}
-      {pending && (
+      {/* ── Panel de reporte — solo admins ── */}
+      {isAdmin && pending && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 w-[360px] bg-[#050608]/97 backdrop-blur-xl border border-white/15 rounded-2xl p-5 shadow-2xl">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-white font-semibold text-sm">Nuevo aviso</h3>
@@ -729,7 +743,7 @@ export default function MapaEnVivoPage() {
               return (
                 <div className="p-4 space-y-3">
                   {filtered.map(alert => (
-                    <AlertCard key={alert.id} alert={alert} onVoteDown={handleVoteDown} onDeactivate={handleDeactivate} />
+                    <AlertCard key={alert.id} alert={alert} onVoteDown={handleVoteDown} onDeactivate={handleDeactivate} isAdmin={isAdmin} />
                   ))}
                 </div>
               );
@@ -771,6 +785,13 @@ export default function MapaEnVivoPage() {
           {error}
         </div>
       )}
+
+      {/* ── Badge ADMIN ── */}
+      {isAdmin && (
+        <div className="absolute top-3 right-3 z-20 bg-[#f97316] text-white text-[11px] font-bold px-3 py-1 rounded-full shadow-xl tracking-widest">
+          ADMIN
+        </div>
+      )}
     </div>
   );
 }
@@ -780,10 +801,12 @@ function AlertCard({
   alert,
   onVoteDown,
   onDeactivate,
+  isAdmin,
 }: {
   alert: RouteAlert;
   onVoteDown: (alert: RouteAlert) => void;
   onDeactivate: (alert: RouteAlert) => void;
+  isAdmin?: boolean;
 }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const cfg = CATALOG[alert.alert_category as CategoryKey]
@@ -818,8 +841,8 @@ function AlertCard({
 
       {/* Acciones */}
       <div className="flex flex-col items-end gap-1.5 shrink-0 mt-0.5">
-        {/* Papelera admin + confirmación inline */}
-        {!confirmDel ? (
+        {/* Papelera — solo admins */}
+        {isAdmin && !confirmDel && (
           <button
             onClick={() => setConfirmDel(true)}
             title="Eliminar aviso"
@@ -827,7 +850,8 @@ function AlertCard({
           >
             🗑
           </button>
-        ) : (
+        )}
+        {isAdmin && confirmDel && (
           <div className="flex flex-col items-end gap-1">
             <span className="text-white/50 text-[10px] whitespace-nowrap">¿Eliminar?</span>
             <div className="flex gap-1">
@@ -846,7 +870,7 @@ function AlertCard({
             </div>
           </div>
         )}
-        {/* Botón "ya no está" */}
+        {/* Botón "ya no está" — todos */}
         {!confirmDel && (
           <button
             onClick={() => onVoteDown(alert)}

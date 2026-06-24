@@ -2,8 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  // Si no hay env vars de Supabase configuradas, deja pasar sin auth check
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
     return NextResponse.next({ request })
   }
 
@@ -11,7 +10,7 @@ export async function middleware(request: NextRequest) {
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     {
       cookies: {
         getAll: () => request.cookies.getAll(),
@@ -32,13 +31,35 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const privatePaths = ['/mi-garaje', '/editor-gpx']
-  const isPrivate = privatePaths.some((p) =>
-    request.nextUrl.pathname.startsWith(p)
-  )
+  const pathname = request.nextUrl.pathname
 
+  // ── Rutas privadas generales (requieren sesión) ──────────────────────────────
+  const privatePaths = ['/mi-garaje', '/editor-gpx', '/perfil']
+  const isPrivate = privatePaths.some((p) => pathname.startsWith(p))
   if (isPrivate && !user) {
     return NextResponse.redirect(new URL('/login', request.url))
+  }
+
+  // ── Panel policial: proteger todo excepto /panel-policial/login ──────────────
+  const isPolicePanelProtected =
+    pathname.startsWith('/panel-policial') &&
+    !pathname.startsWith('/panel-policial/login')
+
+  if (isPolicePanelProtected) {
+    if (!user) {
+      return NextResponse.redirect(new URL('/panel-policial/login', request.url))
+    }
+
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    const role = profile?.role as string | undefined
+    if (role !== 'police' && role !== 'admin') {
+      return NextResponse.redirect(new URL('/', request.url))
+    }
   }
 
   return supabaseResponse

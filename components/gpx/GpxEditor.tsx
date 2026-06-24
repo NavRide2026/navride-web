@@ -2,11 +2,15 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  Trash2, Undo2, Redo2, Download, Upload, MapPin, Plus,
+  Trash2, Undo2, Redo2, Download, MapPin, Plus,
   RotateCw, Loader2, AlertCircle, CheckCircle2, X,
-  Navigation, Maximize2,
+  Navigation, Maximize2, Cloud, Smartphone, Link2,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import {
+  tryOpenNavRideApp,
+  buildRouteDeepLinks,
+  copyRouteLink,
+} from "@/lib/gpx/saveRouteToCloud";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type LngLat = [number, number];
@@ -195,7 +199,10 @@ export default function GpxEditor() {
   const [routing,    setRouting]    = useState(false);
   const [histIdx,    setHistIdx]    = useState(0);
   const [uploading,  setUploading]  = useState(false);
+  const [saving,     setSaving]     = useState(false);
   const [uploadMsg,  setUploadMsg]  = useState<{ ok: boolean; text: string } | null>(null);
+  const [savedRouteId, setSavedRouteId] = useState<string | null>(null);
+  const [savedSignature, setSavedSignature] = useState("");
 
   // Refs to avoid stale closures inside map handlers
   const segsRef      = useRef<Segment[]>([INIT_SEG]);
@@ -570,62 +577,98 @@ export default function GpxEditor() {
     URL.revokeObjectURL(url);
   }, [segments, routeTitle]);
 
-  const handleUpload = useCallback(async () => {
+  const routeSignature = useCallback(() => {
     const allPts = segments.flatMap(s =>
       s.routePoints.length >= 2 ? s.routePoints : s.waypoints,
     );
-    if (allPts.length < 2) return;
+    return `${routeTitle}|${allPts.length}|${totalKm(segments).toFixed(3)}`;
+  }, [segments, routeTitle]);
+
+  const persistRoute = useCallback(async (): Promise<string | null> => {
+    const allPts = segments.flatMap(s =>
+      s.routePoints.length >= 2 ? s.routePoints : s.waypoints,
+    );
+    if (allPts.length < 2) return null;
+
+    const gpx = exportGpx(segments, routeTitle);
+    const res = await fetch("/api/gpx/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        title: routeTitle,
+        gpxXml: gpx,
+        waypointsCount: allPts.length,
+        distanceM: totalKm(segments) * 1000,
+        existingRouteId: savedRouteId,
+      }),
+    });
+
+    const result = (await res.json()) as
+      | { ok: true; routeId: string; storageUrl: string }
+      | { ok: false; error: string };
+
+    if (!result.ok) {
+      setUploadMsg({ ok: false, text: result.error });
+      return null;
+    }
+
+    setSavedRouteId(result.routeId);
+    setSavedSignature(routeSignature());
+    return result.routeId;
+  }, [segments, routeTitle, routeSignature, savedRouteId]);
+
+  const handleSave = useCallback(async () => {
+    if (saving || uploading) return;
+    setSaving(true);
+    setUploadMsg(null);
+    const id = await persistRoute();
+    if (id) {
+      const isUpdate = savedRouteId != null && savedRouteId === id;
+      setUploadMsg({
+        ok: true,
+        text: isUpdate
+          ? "Ruta actualizada en la web. Visible al instante en NavRide → menú GPX Web."
+          : "Ruta guardada en la web. Visible al instante en NavRide → menú GPX Web.",
+      });
+    }
+    setSaving(false);
+  }, [persistRoute, saving, uploading, savedRouteId]);
+
+  const handleLaunch = useCallback(async () => {
+    if (saving || uploading) return;
     setUploading(true);
     setUploadMsg(null);
+
     try {
-      const supabase = createClient();
-      const { data: { user }, error: authErr } = await supabase.auth.getUser();
-      if (authErr || !user) {
-        setUploadMsg({ ok: false, text: "Necesitas iniciar sesión para enviar rutas." });
+      let routeId = savedRouteId;
+      const sig = routeSignature();
+      if (!routeId || savedSignature !== sig) {
+        routeId = await persistRoute();
+      }
+      if (!routeId) {
         setUploading(false);
         return;
       }
 
-      // 1 — Subir archivo GPX al bucket
-      const gpx      = exportGpx(segments, routeTitle);
-      const blob     = new Blob([gpx], { type: "application/gpx+xml" });
-      const fileName = `${user.id}/${Date.now()}_${routeTitle.replace(/\s+/g, "_")}.gpx`;
-      const { error: storageErr } = await supabase.storage
-        .from("gpx")
-        .upload(fileName, blob, { contentType: "application/gpx+xml" });
-      if (storageErr) {
-        setUploadMsg({ ok: false, text: `Error al subir el archivo: ${storageErr.message}` });
-        setUploading(false);
-        return;
-      }
+      const links = buildRouteDeepLinks(routeId);
+      const opened = tryOpenNavRideApp(routeId);
+      const copied = await copyRouteLink(routeId);
 
-      // 2 — Obtener URL pública
-      const { data: urlData } = supabase.storage.from("gpx").getPublicUrl(fileName);
-
-      // 3 — Insertar en gpx_routes y capturar el error correctamente
-      const { error: insertErr } = await supabase.from("gpx_routes").insert({
-        author_id:       user.id,
-        title:           routeTitle,
-        storage_url:     urlData.publicUrl,
-        waypoints_count: allPts.length,
-        distance_m:      Math.round(totalKm(segments) * 1000),
-        is_public:       false,
+      setUploadMsg({
+        ok: true,
+        text: opened
+          ? "Ruta guardada. Abriendo NavRide… (misma cuenta Supabase en la app)."
+          : copied
+            ? `Ruta guardada. Enlace copiado. Ábrelo en el móvil con NavRide instalada: ${links.https}`
+            : `Ruta guardada. Abre en el móvil: ${links.https}`,
       });
-      if (insertErr) {
-        // Borrar el archivo que ya subimos para no dejar huérfanos
-        await supabase.storage.from("gpx").remove([fileName]).catch(() => {});
-        setUploadMsg({ ok: false, text: `Error al guardar la ruta: ${insertErr.message}` });
-        setUploading(false);
-        return;
-      }
-
-      setUploadMsg({ ok: true, text: "✅ Ruta guardada. Abre 'Mis Rutas Web' en la app para descargarla." });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Error desconocido";
       setUploadMsg({ ok: false, text: `Error inesperado: ${msg}` });
     }
     setUploading(false);
-  }, [segments, routeTitle]);
+  }, [persistRoute, routeSignature, savedRouteId, savedSignature, saving, uploading]);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const km            = totalKm(segments);
@@ -805,21 +848,41 @@ export default function GpxEditor() {
             Snap-to-road OSRM · Satélite ESRI · OpenFreeMap OSM
           </p>
 
-          {/* Download */}
+          {/* Descargar local */}
           <button onClick={handleDownload} disabled={totalWpts < 2}
             className="flex items-center justify-center gap-2 rounded-full border border-white/15 py-2.5 text-sm text-white/70 hover:text-white hover:border-white/30 disabled:opacity-30 disabled:cursor-not-allowed transition">
             <Download size={14} />
             Descargar GPX ({totalRoutePts > 0 ? totalRoutePts : totalWpts} pts)
           </button>
 
-          {/* Upload */}
-          <button onClick={handleUpload} disabled={totalWpts < 2 || uploading}
+          {/* Guardar en la nube — aparece en app GPX Web vía Realtime */}
+          <button onClick={() => void handleSave()} disabled={totalWpts < 2 || saving || uploading}
+            className="flex items-center justify-center gap-2 rounded-full border border-[#3b82f6]/50 bg-[#3b82f6]/10 py-2.5 text-sm font-semibold text-[#60a5fa] hover:bg-[#3b82f6]/20 disabled:opacity-40 disabled:cursor-not-allowed transition">
+            {saving
+              ? <Loader2 size={14} className="animate-spin" />
+              : <Cloud size={14} />}
+            {saving
+              ? "Guardando en la web…"
+              : savedRouteId
+                ? "Actualizar en la web"
+                : "Guardar en la web"}
+          </button>
+
+          {/* Enviar a la app (guarda si hace falta + deep link) */}
+          <button onClick={() => void handleLaunch()} disabled={totalWpts < 2 || saving || uploading}
             className="flex items-center justify-center gap-2 rounded-full bg-[#f97316] py-2.5 text-sm font-semibold text-white hover:bg-[#f97316]/90 disabled:opacity-40 disabled:cursor-not-allowed transition">
             {uploading
               ? <Loader2 size={14} className="animate-spin" />
-              : <Upload size={14} />}
-            {uploading ? "Subiendo…" : "Lanzar a NavRide App"}
+              : <Smartphone size={14} />}
+            {uploading ? "Enviando a la app…" : "Enviar a NavRide App"}
           </button>
+
+          {savedRouteId && (
+            <p className="text-[10px] text-white/35 flex items-center gap-1">
+              <Link2 size={10} />
+              ID guardado — sync automático con GPX Web en la app
+            </p>
+          )}
 
           {uploadMsg && (
             <div className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2.5 ${

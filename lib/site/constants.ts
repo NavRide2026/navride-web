@@ -77,6 +77,7 @@ export const PUBLIC_ROUTES = [
   "/login",
   "/mi-garaje",
   "/editor-gpx",
+  "/perfil",
   "/legal/legal-notice.html",
   "/legal/terms.html",
   "/legal/subscription.html",
