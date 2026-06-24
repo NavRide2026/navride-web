@@ -1,7 +1,7 @@
 ﻿import Link from "next/link";
 import { FEATURES } from "@/lib/site/constants";
 import { SectionHeading } from "@/components/site/section-heading";
-import { Map, Route, Wifi, Mic } from "lucide-react";
+import { Clock, Map, Route, Wifi, Mic } from "lucide-react";
 
 const ICONS = [Route, Map, Wifi, Mic];
 
@@ -29,6 +29,12 @@ export default function Features() {
                 <h3 className="text-lg font-semibold text-white mb-2">
                   {feature.title}
                 </h3>
+                {feature.title === "Modo Rally" && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-medium text-amber-400 mb-3">
+                    <Clock className="h-3 w-3" />
+                    Próximamente · Solo Plan Pilot
+                  </span>
+                )}
                 <p className="text-white/60 text-sm leading-relaxed">
                   {feature.description}
                 </p>
