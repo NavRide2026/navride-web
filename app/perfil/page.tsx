@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { User, Route, Shield, Zap, AlertTriangle, TrendingUp } from "lucide-react";
 import PerfilSignOutButton from "@/components/profile/PerfilSignOutButton";
+import PerfilEditForm from "@/components/profile/PerfilEditForm";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import SavedRoutesList from "@/components/profile/SavedRoutesList";
 
@@ -61,6 +62,9 @@ export default async function PerfilPage() {
     role: string;
     points: number;
     total_alerts: number;
+    username: string | null;
+    avatar_url: string | null;
+    show_username_on_reports: boolean;
   } | null = null;
 
   try {
@@ -71,7 +75,7 @@ export default async function PerfilPage() {
     if (user) {
       const { data: p } = await supabase
         .from("user_profiles")
-        .select("display_name, role, points, total_alerts")
+        .select("display_name, role, points, total_alerts, username, avatar_url, show_username_on_reports")
         .eq("id", user.id)
         .maybeSingle();
       profile = p ?? null;
@@ -82,10 +86,13 @@ export default async function PerfilPage() {
 
   if (!user) redirect("/login");
 
-  const name         = profile?.display_name ?? user.email?.split("@")[0] ?? "Rider";
-  const role         = profile?.role ?? "user";
-  const points       = profile?.points ?? 0;
-  const totalAlerts  = profile?.total_alerts ?? 0;
+  const name              = profile?.display_name ?? user.email?.split("@")[0] ?? "Rider";
+  const role              = profile?.role ?? "user";
+  const points            = profile?.points ?? 0;
+  const totalAlerts       = profile?.total_alerts ?? 0;
+  const username          = profile?.username ?? null;
+  const avatarUrl         = profile?.avatar_url ?? null;
+  const showUsernameOn    = profile?.show_username_on_reports ?? false;
   const { level, title: levelTitle, progressPct, nextPoints } = computeLevel(points);
 
   return (
@@ -96,8 +103,11 @@ export default async function PerfilPage() {
         <header className="flex flex-col gap-4">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-[#f97316]/15 border border-[#f97316]/30 flex items-center justify-center">
-                <User size={28} className="text-[#f97316]" />
+              <div className="w-14 h-14 rounded-2xl bg-[#f97316]/15 border border-[#f97316]/30 flex items-center justify-center overflow-hidden">
+                {avatarUrl
+                  ? <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                  : <User size={28} className="text-[#f97316]" />
+                }
               </div>
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -173,6 +183,13 @@ export default async function PerfilPage() {
             Gana puntos creando avisos de ruta (+2 pts) y confirmando incidencias de otros (+1 pt).
           </p>
         </section>
+
+        {/* ── Editar perfil ── */}
+        <PerfilEditForm
+          initialUsername={username}
+          initialAvatarUrl={avatarUrl}
+          initialShowUsername={showUsernameOn}
+        />
 
         {/* ── Saved routes ── */}
         <section className="rounded-2xl border border-white/10 bg-[#0a0a0a] p-5 md:p-6">

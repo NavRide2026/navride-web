@@ -38,6 +38,12 @@ const CATEGORIES = Object.keys(CATALOG) as CategoryKey[];
 const DEFAULT_CAT_KEY: CategoryKey = "Bloqueo";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+interface AlertReporter {
+  username: string | null;
+  avatar_url: string | null;
+  show_username_on_reports: boolean;
+}
+
 interface RouteAlert {
   id: string;
   latitude: number;
@@ -48,7 +54,10 @@ interface RouteAlert {
   location_name: string | null;
   created_at: string;
   is_active: boolean;
+  votes_up: number;
   votes_down: number;
+  user_id: string | null;
+  user_profiles: AlertReporter | null;
 }
 
 interface PendingDrop { lat: number; lng: number }
@@ -254,6 +263,24 @@ export default function MapaEnVivoPage() {
 
       // Exponer vote-down para los botones HTML de los popups de MapLibre
       ;(window as any).__navrideVoteDown = async (id: string, currentVotesDown: number) => {
+        try {
+          const res = await fetch(`/api/alertas/${id}/votar`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ voto: "down" }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (!data.alert?.is_active) {
+              removeMarkerFn.current(id);
+              setAlerts(prev => prev.filter(a => a.id !== id));
+            } else {
+              setAlerts(prev => prev.map(a => a.id === id ? { ...a, ...data.alert } : a));
+            }
+            return;
+          }
+        } catch { /* network error — fallback */ }
+        // Fallback: voto directo (usuario anónimo o sin sesión)
         const newDown = currentVotesDown + 1;
         const update: Record<string, unknown> = { votes_down: newDown };
         if (newDown >= 3) update.is_active = false;
@@ -280,7 +307,7 @@ export default function MapaEnVivoPage() {
           const supabase = createClient();
           const { data, error: dbErr } = await supabase
             .from("route_alerts")
-            .select("*")
+            .select("*, user_profiles(username, avatar_url, show_username_on_reports)")
             .eq("is_active", true)
             .order("created_at", { ascending: false })
             .limit(500);
@@ -370,7 +397,7 @@ export default function MapaEnVivoPage() {
       try {
         const { data } = await supabase
           .from("route_alerts")
-          .select("*")
+          .select("*, user_profiles(username, avatar_url, show_username_on_reports)")
           .eq("is_active", true)
           .gt("created_at", ts)
           .order("created_at", { ascending: false })
@@ -430,6 +457,7 @@ export default function MapaEnVivoPage() {
 
       // 2. INSERT con location_name ya resuelta
       const supabase = createClient();
+      const { data: { user: reporter } } = await supabase.auth.getUser();
       const payload: Record<string, unknown> = {
         latitude:       pending.lat,
         longitude:      pending.lng,
@@ -438,6 +466,7 @@ export default function MapaEnVivoPage() {
         is_active:      true,
         location_name:  locationName,
       };
+      if (reporter?.id) payload.user_id = reporter.id;
       if (newDesc.trim()) payload.description = newDesc.trim();
 
       let { error: insertErr } = await supabase
@@ -476,6 +505,24 @@ export default function MapaEnVivoPage() {
 
   // ── Votar "ya no está" (lista y mapa) ──────────────────────────────────────
   const handleVoteDown = useCallback(async (alert: RouteAlert) => {
+    try {
+      const res = await fetch(`/api/alertas/${alert.id}/votar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voto: "down" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.alert?.is_active) {
+          removeMarkerFn.current(alert.id);
+          setAlerts(prev => prev.filter(a => a.id !== alert.id));
+        } else {
+          setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, ...data.alert } : a));
+        }
+        return;
+      }
+    } catch { /* network error — fallback */ }
+    // Fallback: voto directo (usuario anónimo)
     const newDown = (alert.votes_down ?? 0) + 1;
     const update: Record<string, unknown> = { votes_down: newDown };
     if (newDown >= 3) update.is_active = false;
@@ -832,11 +879,28 @@ function AlertCard({
         </div>
         <div className="flex items-center gap-1 mb-1.5">
           <span className="text-white/30 text-[11px]">📍</span>
-          <span className="text-white/70 text-xs truncate">{location}</span>
+          <span className="text-white/70 text-xs break-words">{location}</span>
         </div>
-        <p className="text-white/40 text-[11.5px] leading-relaxed line-clamp-2">
+        <p className="text-white/40 text-[11.5px] leading-relaxed break-words">
           A las {timeStr} se ha reportado {typeLabel} en {location}
         </p>
+        {/* Reporter */}
+        <div className="flex items-center gap-1.5 mt-1.5">
+          {alert.user_profiles?.show_username_on_reports && alert.user_profiles?.username ? (
+            <>
+              {alert.user_profiles.avatar_url && (
+                <img
+                  src={alert.user_profiles.avatar_url}
+                  alt=""
+                  className="w-4 h-4 rounded-full object-cover shrink-0"
+                />
+              )}
+              <span className="text-white/40 text-[11px]">{alert.user_profiles.username}</span>
+            </>
+          ) : (
+            <span className="text-white/25 text-[11px]">Piloto Anónimo</span>
+          )}
+        </div>
       </div>
 
       {/* Acciones */}
