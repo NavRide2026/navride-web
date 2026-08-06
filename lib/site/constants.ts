@@ -7,7 +7,7 @@ export const BRAND = {
   tagline: "OEM Offroad Navigation",
   taglineEs: "Navegación offroad orientada a GPX",
   version: "0.9.0 beta",
-  lastUpdated: "2026-05-30",
+  lastUpdated: "2026-08-06",
   holderName: "Daniel Montero Mora",
   holderAddress: "Mollet del Vallès, Barcelona, Cataluña, España",
   supportEmail: "navride@outlook.com",

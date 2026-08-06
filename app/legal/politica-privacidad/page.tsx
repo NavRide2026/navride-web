@@ -59,8 +59,9 @@ export default function PoliticaPrivacidadPage() {
             <p>
               NavRide es navegación GPS offroad con rutas GPX, mapas
               offline/online y suscripción <strong>NavRide Adventure</strong> vía
-              Google Play. No hay cuentas obligatorias ni login en servidor
-              NavRide.
+              Google Play. Puede usarse con cuenta cloud opcional (Supabase) para
+              sincronizar rutas y alertas. La navegación GPS no requiere
+              telemetría publicitaria.
             </p>
           </section>
 
@@ -73,12 +74,27 @@ export default function PoliticaPrivacidadPage() {
                 <p className="text-white font-medium mb-1">a) Ubicación GPS</p>
                 <ul className="list-disc pl-5 space-y-1">
                   <li>
-                    Coordenadas, velocidad y rumbo durante navegación o servicio
-                    foreground (pantalla apagada en navegación activa).
+                    Coordenadas, velocidad y rumbo durante la navegación GPS.
+                  </li>
+                  <li>
+                    <strong>Android:</strong> permisos{" "}
+                    <code>ACCESS_FINE_LOCATION</code> /{" "}
+                    <code>ACCESS_COARSE_LOCATION</code> (ubicación mientras usas
+                    la app). Durante navegación activa, un{" "}
+                    <strong>servicio en primer plano</strong> (
+                    <code>FOREGROUND_SERVICE</code> /{" "}
+                    <code>FOREGROUND_SERVICE_LOCATION</code>) con notificación
+                    persistente («Navegación activa») mantiene el GPS si
+                    minimizas la app o apagas la pantalla.
+                  </li>
+                  <li>
+                    NavRide <strong>no</strong> declara ni solicita{" "}
+                    <code>ACCESS_BACKGROUND_LOCATION</code> (permiso de
+                    ubicación en segundo plano del sistema).
                   </li>
                   <li>
                     Procesado en el dispositivo. NavRide no envía tu posición en
-                    tiempo real a servidores propios.
+                    tiempo real a servidores con fines publicitarios.
                   </li>
                 </ul>
               </div>
@@ -190,12 +206,13 @@ export default function PoliticaPrivacidadPage() {
             <ul className="list-disc pl-5 space-y-1">
               <li>
                 <strong>Ubicación</strong> (ACCESS_FINE_LOCATION /
-                ACCESS_COARSE_LOCATION): navegación GPS.
+                ACCESS_COARSE_LOCATION): navegación GPS mientras usas la app.
               </li>
               <li>
                 <strong>Servicio en primer plano</strong> (FOREGROUND_SERVICE /
-                FOREGROUND_SERVICE_LOCATION): GPS con pantalla apagada durante
-                navegación activa.
+                FOREGROUND_SERVICE_LOCATION): GPS con pantalla apagada o app
+                minimizada durante navegación activa (notificación persistente).
+                No se usa ACCESS_BACKGROUND_LOCATION.
               </li>
               <li>
                 <strong>Notificaciones</strong> (POST_NOTIFICATIONS): aviso del
@@ -242,6 +259,10 @@ export default function PoliticaPrivacidadPage() {
                 </a>
               </li>
               <li>
+                <strong>Supabase:</strong> autenticación y datos cloud opcionales
+                del usuario (perfil, rutas, alertas).
+              </li>
+              <li>
                 <strong>OSRM / OpenStreetMap:</strong> enrutado y mapas.
               </li>
               <li>
@@ -255,16 +276,17 @@ export default function PoliticaPrivacidadPage() {
               6. Retención y eliminación
             </h2>
             <p>
-              Datos locales hasta que los elimines en la app (Ajustes →
-              Privacidad) o desinstales. Exportar/Eliminar mis datos disponible en
-              la app. Ver{" "}
+              Datos locales: Ajustes → Datos → Eliminar mis datos, o
+              desinstalación. Cuenta y datos cloud: Ajustes → Datos → Eliminar
+              cuenta. Solicitud web:{" "}
               <Link
-                href="/legal/eliminacion-datos"
+                href="/legal/data-deletion.html"
                 className="text-[#FF5A1F] hover:underline"
               >
                 política de eliminación de datos
-              </Link>
-              .
+              </Link>{" "}
+              o email {BRAND.supportEmail}. Eliminar datos en NavRide no cancela
+              la suscripción de Google Play.
             </p>
           </section>
 
