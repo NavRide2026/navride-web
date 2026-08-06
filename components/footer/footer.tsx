@@ -72,6 +72,19 @@ export default function Footer() {
               </Link>
             </li>
             <li>
+              <Link href="/legal/terms.html" className="hover:text-white transition">
+                Términos de servicio
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/legal/data-deletion.html"
+                className="hover:text-white transition"
+              >
+                Eliminación de datos
+              </Link>
+            </li>
+            <li>
               <Link href="/contacto" className="hover:text-white transition">
                 Contacto
               </Link>

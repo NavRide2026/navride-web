@@ -1,12 +1,29 @@
 import type { NextConfig } from "next";
 
+const securityHeaders = [
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(self)",
+  },
+];
+
 const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: securityHeaders,
+      },
+    ];
+  },
   async redirects() {
     return [
-      // Legal — URL canónica privacidad + aliases legacy
       {
         source: "/legal/privacy_policy.html",
         destination: "/legal/politica-privacidad",
@@ -42,7 +59,6 @@ const nextConfig: NextConfig = {
         destination: "/legal/terms.html",
         permanent: true,
       },
-      // Rutas legacy eliminadas
       {
         source: "/news",
         destination: "/noticias",

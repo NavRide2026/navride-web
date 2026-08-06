@@ -1,6 +1,6 @@
 /** NavRide web — copy and metadata from app NavRideLegalCatalog / AppConstants */
 
-export const SITE_URL = "https://web-navride.vercel.app" as const;
+export const SITE_URL = "https://navride-web.vercel.app" as const;
 
 export const BRAND = {
   name: "NavRide",
