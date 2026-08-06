@@ -18,7 +18,7 @@ function p(text) {
   return `<p>${text}</p>`;
 }
 
-const updated = "2026-05-30";
+const updated = "2026-08-06";
 const email = '<a href="mailto:navride@outlook.com">navride@outlook.com</a>';
 const location = "Mollet del Vallès, Barcelona, Cataluña, España";
 
@@ -29,7 +29,7 @@ const docs = {
     <h2>Titular</h2>${p(`Daniel Montero Mora<br>${location}<br>Email: ` + email)}
     <h2>1. Identificación y normativa</h2>${p("Este aviso se publica conforme a la Ley 34/2002 (LSSI-CE) y normativa aplicable en España.")}
     <h2>2. Objeto</h2>${p("NavRide es una aplicación móvil de navegación offroad para motos, coches y bicicletas. Permite visualizar mapas, importar rutas GPX, navegar con GPS, grabar tracks y acceder a funciones premium mediante suscripción NavRide Adventure gestionada por Google Play.")}
-    ${p("NavRide funciona principalmente en el dispositivo (offline-first). No existe servidor propio de NavRide para cuentas de usuario ni almacenamiento de rutas en la nube.")}
+    ${p("NavRide funciona principalmente en el dispositivo (offline-first). Para funciones cloud opcionales (cuenta, rutas, alertas) puede usar Supabase. La navegación GPS no depende de telemetría publicitaria.")}
     <h2>3. Condición de usuario</h2>${p("El uso de la app implica la aceptación de este Aviso legal, los Términos y condiciones y la Política de privacidad vigentes.")}
     <h2>4. Reglas de uso</h2>${p("El usuario se compromete a un uso lícito, a no interferir en el funcionamiento de la app y a mantener una conducción segura. NavRide es una ayuda a la navegación; no sustituye las señales de tráfico ni la atención del conductor.")}
     <h2>5. Propiedad intelectual</h2>${p("Interfaces, diseño, software y contenidos propios de NavRide están protegidos por la legislación de propiedad intelectual. Los mapas utilizan datos y estilos de terceros (OpenStreetMap, CARTO, OpenTopoMap) sujetos a sus licencias.")}
@@ -85,16 +85,17 @@ const docs = {
   ),
 
   "data-deletion.html": wrap(
-    "Eliminación de datos",
-    `<h1>Política de eliminación de datos — NavRide</h1><p class="last-updated">Última actualización: ${updated}</p>
-    <h2>1. Ámbito</h2>${p("Todos los datos de usuario se almacenan en el dispositivo; no hay servidor NavRide con copia de tus rutas.")}
-    <h2>2. Cómo eliminar</h2>
-    <ul><li><strong>Exportar mis datos:</strong> Ajustes → Privacidad → Exportar mis datos (JSON local).</li>
-    <li><strong>Eliminar mis datos:</strong> Ajustes → Privacidad → Eliminar mis datos.</li>
-    <li><strong>Eliminar cuenta:</strong> Ajustes → Eliminar cuenta (borra datos locales; no existe cuenta en servidor NavRide).</li>
-    <li><strong>Desinstalación:</strong> elimina todos los datos locales.</li></ul>
-    <h2>3. Suscripción Google Play</h2>${p("Eliminar datos locales NO cancela la suscripción. Cancélala en Google Play.")}
-    <h2>4. Solicitudes adicionales</h2>${p(email)}`
+    "Eliminación de datos y cuenta",
+    `<h1>Eliminación de datos y cuenta — NavRide</h1><p class="last-updated">Última actualización: ${updated}</p>
+    <h2>1. Ámbito</h2>${p("NavRide puede almacenar datos en el dispositivo y, si inicias sesión, en Supabase (perfil, rutas GPX, alertas y sesiones asociadas a tu usuario).")}
+    <h2>2. Cómo eliminar (in-app)</h2>
+    <ul><li><strong>Exportar mis datos:</strong> Ajustes → Datos → Exportar mis datos.</li>
+    <li><strong>Eliminar mis datos (local):</strong> Ajustes → Datos → Eliminar mis datos.</li>
+    <li><strong>Eliminar cuenta:</strong> Ajustes → Datos → Eliminar cuenta — borra autenticación, datos cloud asociados y datos locales de la instalación.</li>
+    <li><strong>Desinstalación:</strong> elimina los datos locales (la cuenta cloud permanece hasta borrarla).</li></ul>
+    <h2>3. Solicitud web / email (requisito Google Play)</h2>${p("Si no puedes usar la app, solicita la eliminación escribiendo a " + email + " desde el email de la cuenta, indicando «Eliminar cuenta NavRide». Plazo habitual ≤ 30 días.")}
+    <h2>4. Suscripción Google Play</h2>${p("Eliminar datos o cuenta en NavRide NO cancela la suscripción. Cancélala en Google Play → Pagos y suscripciones.")}
+    <h2>5. Contacto</h2>${p(email)}`
   ),
 
   "gps-disclaimer.html": wrap(
