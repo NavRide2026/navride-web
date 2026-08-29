@@ -8,8 +8,9 @@
 
 ## VEREDICTO
 
-**STATIC CLOSURE COMPLETE — VERCEL DEPLOY REMAINS**  
-(o READY FOR VERCEL DEPLOY si push completado en esta sesión)
+**STATICALLY VERIFIED — READY FOR VERCEL DEPLOY**
+
+Commit `6f7d17f` pusheado a `origin/main` (auto-deploy Vercel esperado).
 
 ---
 
@@ -104,17 +105,15 @@ Deep link page no descarga bytes; abre app con `routeId`.
 
 ## J. Build/lint
 
-Ver salida de sesión (npm run lint / build).
-
----
+- `npm run build`: **OK** (Next.js 16.2.6)
+- `npm run lint`: errores preexistentes (GpxEditor refs, set-state-in-effect en SavedRoutesList loadRoutes, etc.) — no introducidos por este cierre GPX
 
 ## K. Deployment status
 
-Git push → Vercel auto-deploy (si remoto accesible).
-
----
+- Commit: `6f7d17f` en `main`
+- Push: `b4a66ce..6f7d17f` → `origin/main`
+- Vercel: auto-deploy desde main
 
 ## L. Remaining blockers
 
-Solo deploy Vercel pendiente si push no se completó.  
-No blockers de código GPX public URL en web.
+Ninguno de código GPX public-URL en web. Confirmar en Vercel dashboard que el deploy de `6f7d17f` quedó Ready.
