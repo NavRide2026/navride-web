@@ -18,7 +18,7 @@ function p(text) {
   return `<p>${text}</p>`;
 }
 
-const updated = "2026-08-06";
+const updated = "2026-08-29";
 const email = '<a href="mailto:navride@outlook.com">navride@outlook.com</a>';
 const location = "Mollet del Vallès, Barcelona, Cataluña, España";
 
@@ -89,13 +89,15 @@ const docs = {
     `<h1>Eliminación de datos y cuenta — NavRide</h1><p class="last-updated">Última actualización: ${updated}</p>
     <h2>1. Ámbito</h2>${p("NavRide puede almacenar datos en el dispositivo y, si inicias sesión, en Supabase (perfil, rutas GPX, alertas y sesiones asociadas a tu usuario).")}
     <h2>2. Cómo eliminar (in-app)</h2>
-    <ul><li><strong>Exportar mis datos:</strong> Ajustes → Datos → Exportar mis datos.</li>
-    <li><strong>Eliminar mis datos (local):</strong> Ajustes → Datos → Eliminar mis datos.</li>
-    <li><strong>Eliminar cuenta:</strong> Ajustes → Datos → Eliminar cuenta — borra autenticación, datos cloud asociados y datos locales de la instalación.</li>
+    <ul><li><strong>Eliminar cuenta:</strong> Ajustes → Eliminar cuenta — reautenticación, Edge Function <code>delete-account</code>, borrado Auth + datos asociados y limpieza local de GPX cloud-linked.</li>
     <li><strong>Desinstalación:</strong> elimina los datos locales (la cuenta cloud permanece hasta borrarla).</li></ul>
-    <h2>3. Solicitud web / email (requisito Google Play)</h2>${p("Si no puedes usar la app, solicita la eliminación escribiendo a " + email + " desde el email de la cuenta, indicando «Eliminar cuenta NavRide». Plazo habitual ≤ 30 días.")}
-    <h2>4. Suscripción Google Play</h2>${p("Eliminar datos o cuenta en NavRide NO cancela la suscripción. Cancélala en Google Play → Pagos y suscripciones.")}
-    <h2>5. Contacto</h2>${p(email)}`
+    <h2>3. Solicitud web (requisito Google Play)</h2>
+    ${p('Ruta técnica: <a href="/delete-account">https://navride-web.vercel.app/delete-account</a> — inicia sesión y solicita borrado inmediato cuando el backend esté desplegado.')}
+    ${p("Alternativa email: escribe a " + email + " desde el email de la cuenta, indicando «Eliminar cuenta NavRide». Plazo habitual ≤ 30 días.")}
+    <h2>4. Qué se borra</h2>
+    <ul><li>Auth user</li><li>user_profiles</li><li>gpx_tracks / gpx_routes / Storage gpx/</li><li>alerta_votos; alertas propias desactivadas/desvinculadas</li></ul>
+    <h2>5. Suscripción Google Play</h2>${p("Eliminar datos o cuenta en NavRide NO cancela la suscripción. Cancélala en Google Play → Pagos y suscripciones.")}
+    <h2>6. Contacto</h2>${p(email)}`
   ),
 
   "gps-disclaimer.html": wrap(

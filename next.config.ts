@@ -25,6 +25,11 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: "/privacy",
+        destination: "/legal/politica-privacidad",
+        permanent: true,
+      },
+      {
         source: "/legal/privacy_policy.html",
         destination: "/legal/politica-privacidad",
         permanent: true,

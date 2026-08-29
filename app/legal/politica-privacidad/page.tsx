@@ -102,8 +102,29 @@ export default function PoliticaPrivacidadPage() {
                 <p className="text-white font-medium mb-1">
                   b) Rutas GPX y grabaciones
                 </p>
-                <ul className="list-disc pl-5">
+                <ul className="list-disc pl-5 space-y-1">
                   <li>Almacenamiento local en tu dispositivo.</li>
+                  <li>
+                    Si inicias sesión y sincronizas: copia en Supabase (
+                    <code>gpx_tracks</code> / <code>gpx_routes</code> / Storage{" "}
+                    <code>gpx</code>) asociada a tu usuario.
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-white font-medium mb-1">
+                  b2) Alertas comunitarias (cuenta)
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Con sesión: tipo de alerta + coordenadas precisas (+ id de
+                    autor en backend). Visibles a otros usuarios como avisos en
+                    mapa.
+                  </li>
+                  <li>
+                    La navegación local no envía tu posición continuamente a
+                    Supabase.
+                  </li>
                 </ul>
               </div>
               <div>
@@ -145,10 +166,39 @@ export default function PoliticaPrivacidadPage() {
               </div>
               <div>
                 <p className="text-white font-medium mb-1">e) Mapas online</p>
-                <ul className="list-disc pl-5">
+                <ul className="list-disc pl-5 space-y-1">
                   <li>
-                    Peticiones de tiles a CARTO CDN / OpenTopoMap (datos ©
-                    OpenStreetMap contributors).
+                    App Beta: estilos/tiles OpenFreeMap (MapLibre). Política:{" "}
+                    <a
+                      href="https://openfreemap.org/privacy/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#FF5A1F] hover:underline"
+                    >
+                      openfreemap.org/privacy
+                    </a>
+                    .
+                  </li>
+                  <li>
+                    Web / builds legacy pueden usar también tiles CARTO /
+                    OpenTopoMap (datos © OpenStreetMap contributors).
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-white font-medium mb-1">
+                  e2) Overpass (grafo vial, app)
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Consultas HTTP a instancias Overpass con bbox alrededor de
+                    la posición para construir grafo vial local.
+                  </li>
+                  <li>
+                    Incluye coordenadas en la query; la IP viaja a nivel de red.
+                    Retención del operador: no hay política de retención
+                    específica publicada por Overpass pública (FOSSGIS / mirrors)
+                    — se documenta como no publicada, sin inventar plazos.
                   </li>
                 </ul>
               </div>
@@ -260,13 +310,32 @@ export default function PoliticaPrivacidadPage() {
               </li>
               <li>
                 <strong>Supabase:</strong> autenticación y datos cloud opcionales
-                del usuario (perfil, rutas, alertas).
+                del usuario (perfil, rutas GPX, alertas). Proyecto técnico
+                documentado en la app Beta.
               </li>
               <li>
-                <strong>OSRM / OpenStreetMap:</strong> enrutado y mapas.
+                <strong>OpenFreeMap:</strong> tiles de mapa (app Beta).{" "}
+                <a
+                  href="https://openfreemap.org/privacy/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#FF5A1F] hover:underline"
+                >
+                  Privacidad
+                </a>
               </li>
               <li>
-                <strong>Open-Meteo:</strong> clima opcional.
+                <strong>Overpass API / OpenStreetMap:</strong> consultas de mapa
+                vial (app). Operadores terceros; retención específica no
+                publicada de forma uniforme.
+              </li>
+              <li>
+                <strong>OSRM / OpenStreetMap:</strong> enrutado en flujos web /
+                legacy cuando aplique.
+              </li>
+              <li>
+                <strong>Open-Meteo:</strong> clima opcional (si la función está
+                activa en esa build).
               </li>
             </ul>
           </section>
@@ -276,17 +345,18 @@ export default function PoliticaPrivacidadPage() {
               6. Retención y eliminación
             </h2>
             <p>
-              Datos locales: Ajustes → Datos → Eliminar mis datos, o
-              desinstalación. Cuenta y datos cloud: Ajustes → Datos → Eliminar
-              cuenta. Solicitud web:{" "}
+              Datos locales: Ajustes → Eliminar / desinstalación. Cuenta y datos
+              cloud: Ajustes → Eliminar cuenta (app), o la ruta web{" "}
               <Link
-                href="/legal/data-deletion.html"
+                href="/delete-account"
                 className="text-[#FF5A1F] hover:underline"
               >
-                política de eliminación de datos
+                /delete-account
               </Link>{" "}
-              o email {BRAND.supportEmail}. Eliminar datos en NavRide no cancela
-              la suscripción de Google Play.
+              (reautenticación + borrado técnico cuando el backend esté
+              desplegado), o email {BRAND.supportEmail}. Retención automática en
+              producto: no definida (UNDEFINED) salvo eliminación por el usuario.
+              Eliminar datos en NavRide no cancela la suscripción de Google Play.
             </p>
           </section>
 
