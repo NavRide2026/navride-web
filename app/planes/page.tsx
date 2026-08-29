@@ -8,7 +8,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Planes",
   description:
-    "Planes Free, Rider y Pilot de NavRide. Suscripción NavRide Adventure vía Google Play.",
+    "Planes de referencia NavRide. La app Android Beta no vende suscripciones in-app actualmente.",
 };
 
 function ComingSoonBadge() {
@@ -50,7 +50,7 @@ export default function PlanesPage() {
         <SectionHeading
           eyebrow="Planes"
           title="Free, Rider y Pilot"
-          description="Diferencias extraídas del catálogo legal y la app. Sin ventajas inventadas."
+          description="Referencia de producto. La app Android Beta actual no exige suscripción ni vende compras in-app."
         />
 
         <div className="grid md:grid-cols-3 gap-6 mb-12">
@@ -150,18 +150,19 @@ export default function PlanesPage() {
 
         <div className="rounded-2xl border border-white/10 bg-[#101114] p-6 md:p-8 space-y-4 text-sm text-white/60">
           <p>
-            <strong className="text-white">Suscripción real en Google Play:</strong>{" "}
-            {PLANS.pilot.productName} ({PLANS.pilot.sku}). {PLANS.pilot.price}.
+            <strong className="text-white">App Android Beta (Google Play):</strong>{" "}
+            no integra Google Play Billing en esta versión. No hay paywall ni
+            compra de {PLANS.pilot.productName} dentro de la app.
           </p>
           <p>
-            <strong className="text-white">Rider:</strong> plan de referencia en
-            la UI — no vendido en Play actualmente. No prometer compra Rider
-            hasta activación comercial.
+            <strong className="text-white">Rider / Pilot:</strong> planes de
+            referencia o futuros. No están disponibles para compra in-app hasta
+            que se activen productos en Play Console y se actualicen los
+            términos.
           </p>
           <p>
-            La suscripción se renueva automáticamente cada mes hasta cancelación
-            en Google Play → Pagos y suscripciones. NavRide no almacena datos de
-            tarjeta.
+            Cuando existan compras digitales en Android, se procesarán vía
+            Google Play Billing. NavRide no almacenará datos de tarjeta.
           </p>
         </div>
       </div>
