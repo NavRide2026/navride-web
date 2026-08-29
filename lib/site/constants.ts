@@ -93,17 +93,17 @@ export const PLANS = {
   free: {
     name: "Free",
     summary:
-      "Prueba gratuita de 7 días de navegación GPX online. Al finalizar, la navegación requiere suscripción Pilot o plan compatible.",
+      "Uso de la app Android Beta sin paywall de suscripción. Mapa y navegación local no exigen login; cuenta opcional para nube/avisos.",
     price: "0 €",
-    badge: "Trial 7 días",
+    badge: "Beta Android",
     purchasable: false,
   },
   rider: {
     name: "Rider",
     summary:
-      "4,99 € / mes · hasta 10 tracks/mes (máx. 50 km c/u), rally hasta 10 h/mes. Plan de referencia UI — no vendido en Play actualmente.",
-    price: "4,99 € / mes",
-    badge: "Referencia UI",
+      "Plan de referencia UI — no vendido in-app en la app Android Beta actual.",
+    price: "Referencia",
+    badge: "No en Play (Beta)",
     purchasable: false,
   },
   pilot: {
@@ -111,10 +111,10 @@ export const PLANS = {
     productName: "NavRide Adventure",
     sku: "navride_adventure_monthly",
     summary:
-      "7,99 € / mes · desbloqueo total: navegación, rally, mapas offline (.mbtiles) y preparación de corredor. Suscripción real vía Google Play.",
-    price: "7,99 € / mes",
-    badge: "Google Play",
-    purchasable: true,
+      "Plan de referencia / futuro. La app Android Beta actual no integra Google Play Billing ni vende esta suscripción.",
+    price: "No disponible in-app",
+    badge: "No en Play (Beta)",
+    purchasable: false,
   },
 } as const;
 
