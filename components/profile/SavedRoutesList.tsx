@@ -9,7 +9,11 @@ import {
   formatRouteDate,
   type GpxRouteRow,
 } from "@/lib/gpx/gpxRouteTypes";
-import { buildRouteDeepLinks, tryOpenNavRideApp } from "@/lib/gpx/saveRouteToCloud";
+import {
+  buildRouteDeepLinks,
+  tryOpenNavRideApp,
+  downloadOwnGpx,
+} from "@/lib/gpx/saveRouteToCloud";
 
 type Props = {
   showHeader?: boolean;
@@ -179,14 +183,24 @@ export default function SavedRoutesList({ showHeader = true, compact = false }: 
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <a
-                    href={route.storage_url}
-                    download
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void (async () => {
+                        const supabase = createClient();
+                        const r = await downloadOwnGpx(
+                          supabase,
+                          route.storage_url,
+                          route.title,
+                        );
+                        if (!r.ok) alert(r.error);
+                      })();
+                    }}
                     className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 hover:text-white hover:border-white/30 transition"
                   >
                     <Download size={12} />
                     GPX
-                  </a>
+                  </button>
                   <button
                     type="button"
                     onClick={() => tryOpenNavRideApp(route.id)}

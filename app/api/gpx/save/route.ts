@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import {
   saveOrUpdateRouteToCloud,
   type SaveRouteInput,
@@ -48,12 +47,10 @@ export async function POST(request: Request) {
     );
   }
 
-  // Sesión validada en servidor; admin opcional si RLS storage aún no está aplicado.
-  const admin = createAdminSupabaseClient();
-  const supabase = admin ?? serverSupabase;
-
+  // Sesión del usuario: Storage RLS own-path en bucket gpx privado.
+  // No usar service_role para uploads de rutas del usuario.
   const result = await saveOrUpdateRouteToCloud(
-    supabase,
+    serverSupabase,
     user,
     input,
     body.existingRouteId ?? null,
