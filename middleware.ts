@@ -1,7 +1,17 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+const CANONICAL_HOST = "navride-web.vercel.app";
+
 export async function middleware(request: NextRequest) {
+  const host = request.headers.get("host")?.split(":")[0]?.toLowerCase();
+  if (host === "web-navride.vercel.app") {
+    const url = request.nextUrl.clone();
+    url.protocol = "https:";
+    url.host = CANONICAL_HOST;
+    return NextResponse.redirect(url, 308);
+  }
+
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !supabaseKey) {
     return NextResponse.next({ request })

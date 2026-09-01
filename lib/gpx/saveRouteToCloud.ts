@@ -199,7 +199,9 @@ export async function saveOrUpdateRouteToCloud(
   return saveRouteToCloud(supabase, user, input);
 }
 
-export const NAVRIDE_WEB_BASE = "https://web-navride.vercel.app";
+import { SITE_URL } from "@/lib/site/constants";
+
+export const NAVRIDE_WEB_BASE = SITE_URL;
 
 export function buildRouteDeepLinks(routeId: string) {
   return {

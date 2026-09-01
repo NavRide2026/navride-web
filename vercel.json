@@ -2,5 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "buildCommand": "npx next build",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "web-navride.vercel.app" }],
+      "destination": "https://navride-web.vercel.app/:path*",
+      "permanent": true
+    }
+  ]
 }
