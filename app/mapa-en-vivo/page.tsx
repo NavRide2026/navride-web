@@ -56,7 +56,7 @@ interface RouteAlert {
   is_active: boolean;
   votes_up: number;
   votes_down: number;
-  user_id: string | null;
+  author_id: string | null;
   user_profiles: AlertReporter | null;
 }
 
@@ -466,7 +466,7 @@ export default function MapaEnVivoPage() {
         is_active:      true,
         location_name:  locationName,
       };
-      if (reporter?.id) payload.user_id = reporter.id;
+      if (reporter?.id) payload.author_id = reporter.id;
       if (newDesc.trim()) payload.description = newDesc.trim();
 
       let { error: insertErr } = await supabase

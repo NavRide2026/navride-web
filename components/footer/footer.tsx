@@ -29,13 +29,23 @@ export default function Footer() {
               </Link>
             </li>
             <li>
-              <Link href="/roadmap" className="hover:text-white transition">
-                Roadmap
+              <Link href="/funciones" className="hover:text-white transition">
+                Funciones
               </Link>
             </li>
             <li>
-              <Link href="/noticias" className="hover:text-white transition">
-                Noticias
+              <Link href="/android-auto" className="hover:text-white transition">
+                Android Auto
+              </Link>
+            </li>
+            <li>
+              <Link href="/novedades" className="hover:text-white transition">
+                Novedades
+              </Link>
+            </li>
+            <li>
+              <Link href="/roadmap" className="hover:text-white transition">
+                Roadmap
               </Link>
             </li>
             {NAV_APP_LINKS.map((link) => (

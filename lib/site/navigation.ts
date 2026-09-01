@@ -3,16 +3,17 @@ export type NavLink = { href: string; label: string };
 
 export const NAV_PUBLIC_LINKS: NavLink[] = [
   { href: "/producto", label: "Producto" },
+  { href: "/funciones", label: "Funciones" },
   { href: "/planes", label: "Planes" },
   { href: "/roadmap", label: "Roadmap" },
-  { href: "/noticias", label: "Noticias" },
+  { href: "/novedades", label: "Novedades" },
   { href: "/contacto", label: "Contacto" },
 ];
 
 export const NAV_APP_LINKS: NavLink[] = [
   { href: "/mi-garaje", label: "Mi Garaje" },
   { href: "/mis-rutas", label: "Mis Rutas" },
-  { href: "/editor-gpx", label: "Editor GPX" },
+  { href: "/editor-gpx", label: "Route Studio" },
   { href: "/perfil", label: "Perfil" },
   { href: "/mapa-en-vivo", label: "Mapa en tiempo real" },
 ];

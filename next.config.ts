@@ -66,7 +66,12 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/news",
-        destination: "/noticias",
+        destination: "/novedades",
+        permanent: true,
+      },
+      {
+        source: "/noticias",
+        destination: "/novedades",
         permanent: true,
       },
       {

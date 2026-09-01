@@ -9,14 +9,15 @@ import type { User } from "@supabase/supabase-js";
 const PUBLIC_LINKS = [
   { href: "/producto", label: "Producto" },
   { href: "/planes", label: "Planes" },
+  { href: "/funciones", label: "Funciones" },
   { href: "/roadmap", label: "Roadmap" },
-  { href: "/noticias", label: "Noticias" },
+  { href: "/novedades", label: "Novedades" },
   { href: "/contacto", label: "Contacto" },
 ];
 
 const APP_LINKS = [
   { href: "/mi-garaje", label: "Mi Garaje" },
-  { href: "/editor-gpx", label: "Editor GPX" },
+  { href: "/editor-gpx", label: "Route Studio" },
   { href: "/mis-rutas", label: "Mis Rutas" },
   { href: "/perfil", label: "Perfil" },
   { href: "/mapa-en-vivo", label: "Mapa en tiempo real" },

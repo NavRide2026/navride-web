@@ -4,8 +4,8 @@ import GpxEditor from "@/components/gpx/GpxEditor";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Editor GPX",
-  description: "Dibuja una ruta en el mapa y expórtala como GPX para NavRide.",
+  title: "NavRide Route Studio",
+  description: "Crea rutas GPX con routing por modo, deshacer/rehacer y sync con la app NavRide.",
 };
 
 export default function EditorGpxPage() {

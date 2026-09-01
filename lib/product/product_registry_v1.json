@@ -1,0 +1,154 @@
+{
+  "registryVersion": "1.0.0",
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-01",
+  "appVersionRef": {
+    "versionName": "0.10.52-beta.debug",
+    "versionCode": 11352
+  },
+  "features": [
+    {
+      "id": "coreNavigation",
+      "name": "Navegación libre",
+      "publicDescription": "Posición, matching y guía sobre mapa con un único núcleo de navegación.",
+      "platforms": ["app"],
+      "status": "AVAILABLE",
+      "releaseChannel": "beta",
+      "currentVersion": "0.10.52",
+      "capabilityId": "coreNavigation",
+      "milestones": [
+        { "id": "core", "label": "Núcleo implementado", "state": "PASS", "evidence": "app/evidencias pipeline" },
+        { "id": "car", "label": "Modo coche cualificado", "state": "PASS", "evidence": "free_nav + routed tests" },
+        { "id": "moto", "label": "Modo moto cualificado", "state": "PASS", "evidence": "mode tests" },
+        { "id": "bike", "label": "Modo bici cualificado", "state": "PASS", "evidence": "mode tests" },
+        { "id": "walk", "label": "Modo caminar cualificado", "state": "PASS", "evidence": "mode tests" },
+        { "id": "prod", "label": "Validación producción", "state": "NOT_STARTED", "evidence": "Play release pending" }
+      ],
+      "lastUpdated": "2026-09-01"
+    },
+    {
+      "id": "gpxWebStudio",
+      "name": "NavRide Route Studio",
+      "publicDescription": "Crea y edita rutas GPX en la web con routing por modo y sincronización con la app.",
+      "platforms": ["web"],
+      "status": "AVAILABLE",
+      "releaseChannel": "public",
+      "currentVersion": "1.0.0",
+      "capabilityId": "routeDoctor",
+      "milestones": [
+        { "id": "editor", "label": "Editor GPX base", "state": "PASS", "evidence": "components/gpx/GpxEditor.tsx" },
+        { "id": "undo", "label": "Undo/redo", "state": "PASS", "evidence": "history stack" },
+        { "id": "modes", "label": "Routing por modo", "state": "PASS", "evidence": "lib/route-studio/routing.ts" },
+        { "id": "health", "label": "Route health", "state": "PASS", "evidence": "lib/route-studio/route-health.ts" },
+        { "id": "sync", "label": "Guardar y enviar a app", "state": "PASS", "evidence": "api/gpx/save" },
+        { "id": "autosave", "label": "Autosave borrador", "state": "PASS", "evidence": "lib/route-studio/autosave.ts" }
+      ],
+      "lastUpdated": "2026-09-01"
+    },
+    {
+      "id": "routeSync",
+      "name": "Sincronización de rutas",
+      "publicDescription": "Rutas web en gpx_routes y tracks de app en gpx_tracks, misma cuenta Supabase.",
+      "platforms": ["app", "web"],
+      "status": "AVAILABLE",
+      "releaseChannel": "beta",
+      "currentVersion": "0.10.52",
+      "milestones": [
+        { "id": "auth", "label": "Cuenta compartida", "state": "PASS", "evidence": "Supabase auth" },
+        { "id": "deeplink", "label": "Deep links /ruta", "state": "PASS", "evidence": "app/ruta/[id]" },
+        { "id": "pull", "label": "Pull cloud app", "state": "PASS", "evidence": "CloudGpxSync" }
+      ],
+      "lastUpdated": "2026-09-01"
+    },
+    {
+      "id": "liveMap",
+      "name": "Mapa en vivo",
+      "publicDescription": "Alertas comunitarias y posición en tiempo real con estados EN VIVO / DESCONECTADO.",
+      "platforms": ["web"],
+      "status": "BETA",
+      "releaseChannel": "public",
+      "currentVersion": "1.0.0",
+      "milestones": [
+        { "id": "map", "label": "Mapa alertas", "state": "PASS", "evidence": "app/mapa-en-vivo" },
+        { "id": "realtime", "label": "Realtime Supabase", "state": "PASS", "evidence": "supabase realtime" },
+        { "id": "stale", "label": "Indicador posición antigua", "state": "PASS", "evidence": "mapa-en-vivo UI" }
+      ],
+      "lastUpdated": "2026-09-01"
+    },
+    {
+      "id": "communityAlerts",
+      "name": "Alertas comunitarias",
+      "publicDescription": "Reporte desde app (beta). Visualización y votación en web.",
+      "platforms": ["app", "web"],
+      "status": "BETA",
+      "releaseChannel": "beta",
+      "currentVersion": "0.10.52",
+      "capabilityId": "safetyContextAlerts",
+      "milestones": [
+        { "id": "report", "label": "Reporte app", "state": "PASS", "evidence": "alert_service.dart" },
+        { "id": "webmap", "label": "Mapa web", "state": "PASS", "evidence": "mapa-en-vivo" },
+        { "id": "moderation", "label": "Panel policial", "state": "PASS", "evidence": "panel-policial" }
+      ],
+      "lastUpdated": "2026-09-01"
+    },
+    {
+      "id": "androidAuto",
+      "name": "Android Auto",
+      "publicDescription": "Navegación en pantalla del coche conectada al mismo NavSession — sin segundo motor.",
+      "platforms": ["app"],
+      "status": "BETA",
+      "releaseChannel": "beta",
+      "currentVersion": "0.10.52",
+      "capabilityId": "androidAuto",
+      "milestones": [
+        { "id": "carapp", "label": "CarAppService NAVIGATION", "state": "PASS", "evidence": "NAVRIDE_ANDROID_AUTO_FINAL_IMPLEMENTATION_2026-09-01.md" },
+        { "id": "singlecore", "label": "Single navigation core", "state": "PASS", "evidence": "invariant tests" },
+        { "id": "map", "label": "Map surface Auto", "state": "PASS", "evidence": "NavRideCarMapRenderer" },
+        { "id": "vehicle", "label": "Validación vehículo real", "state": "NOT_STARTED", "evidence": "DHU/hardware pending" }
+      ],
+      "lastUpdated": "2026-09-01"
+    },
+    {
+      "id": "account",
+      "name": "Cuenta NavRide",
+      "publicDescription": "Una cuenta para app y web: perfil, rutas y preferencias.",
+      "platforms": ["app", "web"],
+      "status": "AVAILABLE",
+      "releaseChannel": "public",
+      "milestones": [
+        { "id": "login", "label": "Login/registro", "state": "PASS", "evidence": "Supabase auth" },
+        { "id": "delete", "label": "Borrado cuenta", "state": "PASS", "evidence": "delete-account" },
+        { "id": "profile", "label": "Perfil web", "state": "PASS", "evidence": "app/perfil" }
+      ],
+      "lastUpdated": "2026-09-01"
+    },
+    {
+      "id": "offlinePacks",
+      "name": "Mapas offline",
+      "publicDescription": "Preparación de corredor y packs offline en app.",
+      "platforms": ["app"],
+      "status": "BETA",
+      "releaseChannel": "beta",
+      "capabilityId": "smartOfflinePacks",
+      "milestones": [
+        { "id": "corridor", "label": "Corredor offline", "state": "PASS", "evidence": "offline/" },
+        { "id": "valhalla", "label": "Valhalla on-device", "state": "PASS", "evidence": "valhalla channel" },
+        { "id": "full", "label": "Pack completo producción", "state": "IN_PROGRESS", "evidence": "partial coverage" }
+      ],
+      "lastUpdated": "2026-08-31"
+    },
+    {
+      "id": "naviAssistant",
+      "name": "NAVI (asistente)",
+      "publicDescription": "Planificación por lenguaje natural — exploración, no anunciado como producto.",
+      "platforms": ["app", "web"],
+      "status": "PLANNED",
+      "releaseChannel": "none",
+      "capabilityId": "naturalLanguagePlanning",
+      "milestones": [
+        { "id": "spec", "label": "Especificación", "state": "NOT_STARTED", "evidence": "capability disabled" }
+      ],
+      "lastUpdated": "2026-08-31"
+    }
+  ]
+}

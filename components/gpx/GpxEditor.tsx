@@ -12,6 +12,15 @@ import {
   buildRouteDeepLinks,
   copyRouteLink,
 } from "@/lib/gpx/saveRouteToCloud";
+import { RouteDoctorPanel } from "@/components/route-studio/capability-panels";
+import { TrackColorPicker } from "@/components/route-studio/track-color-picker";
+import {
+  routeWaypoints,
+  TRANSPORT_MODES,
+  type TransportMode,
+} from "@/lib/route-studio/routing";
+import { analyzeRouteHealth } from "@/lib/route-studio/route-health";
+import { saveDraft, loadDraft, clearDraft } from "@/lib/route-studio/autosave";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type LngLat = [number, number];
@@ -22,6 +31,7 @@ interface Segment {
   color: string;
   waypoints: LngLat[];
   routePoints: LngLat[];
+  routingFailed?: boolean;
 }
 
 // ─── Map styles ───────────────────────────────────────────────────────────────
@@ -48,6 +58,12 @@ const SAT_STYLE = {
   },
   layers: [
     { id: "sat-bg", type: "raster" as const, source: "satellite" },
+    {
+      id: "sat-labels",
+      type: "raster" as const,
+      source: "osm-labels",
+      paint: { "raster-opacity": 0.85 },
+    },
   ],
 };
 
@@ -103,29 +119,16 @@ function totalKm(segs: Segment[]): number {
   );
 }
 
-async function osrmRoute(waypoints: LngLat[]): Promise<LngLat[]> {
-  if (waypoints.length < 2) return waypoints;
-  const coords = waypoints
-    .map(([lng, lat]) => `${lng.toFixed(6)},${lat.toFixed(6)}`)
-    .join(";");
-
-  const profiles = ["driving", "foot", "bike"];
-  for (const profile of profiles) {
-    try {
-      const res = await fetch(
-        `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson`,
-        { signal: AbortSignal.timeout(7000) },
-      );
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data.code === "Ok" && data.routes?.[0]?.geometry?.coordinates?.length > 0) {
-        return data.routes[0].geometry.coordinates as LngLat[];
-      }
-    } catch {
-      // network error or timeout — try next profile
-    }
-  }
-  return waypoints;
+async function routeForMode(
+  waypoints: LngLat[],
+  mode: TransportMode,
+): Promise<{ points: LngLat[]; ok: boolean; message?: string }> {
+  const result = await routeWaypoints(waypoints, mode);
+  return {
+    points: result.ok ? result.points : waypoints,
+    ok: result.ok,
+    message: result.message,
+  };
 }
 
 function buildGeoJSON(segs: Segment[]) {
@@ -200,6 +203,13 @@ export default function GpxEditor() {
   const [uploadMsg,  setUploadMsg]  = useState<{ ok: boolean; text: string } | null>(null);
   const [savedRouteId, setSavedRouteId] = useState<string | null>(null);
   const [savedSignature, setSavedSignature] = useState("");
+  const [transportMode, setTransportMode] = useState<TransportMode>("moto");
+  const [editorMode, setEditorMode] = useState<"simple" | "advanced">("simple");
+  const [routeError, setRouteError] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [draftBanner, setDraftBanner] = useState<string | null>(null);
+
+  const transportModeRef = useRef<TransportMode>("moto");
 
   // Mobile / UI state
   const [drawerOpen,        setDrawerOpen]        = useState(false);
@@ -215,6 +225,27 @@ export default function GpxEditor() {
 
   useEffect(() => { segsRef.current = segments; },   [segments]);
   useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+  useEffect(() => { transportModeRef.current = transportMode; }, [transportMode]);
+
+  useEffect(() => {
+    const draft = loadDraft();
+    if (draft?.segments && Array.isArray(draft.segments)) {
+      setDraftBanner(`Borrador del ${new Date(draft.savedAt).toLocaleString("es-ES")}`);
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      saveDraft({
+        savedAt: new Date().toISOString(),
+        routeTitle,
+        transportMode,
+        editorMode,
+        segments,
+      });
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [segments, routeTitle, transportMode, editorMode]);
 
   // ── Map sync ──
   const syncMap = useCallback((segs: Segment[]) => {
@@ -341,9 +372,15 @@ export default function GpxEditor() {
         }
 
         setRouting(true);
-        const routePoints = await osrmRoute(activeSeg.waypoints);
+        setRouteError(null);
+        const routed = await routeForMode(activeSeg.waypoints, transportModeRef.current);
+        if (!routed.ok) setRouteError(routed.message ?? "No se pudo calcular la ruta.");
         setSegments(prev => {
-          const r = prev.map(s => s.id === aId ? { ...s, routePoints } : s);
+          const r = prev.map(s => s.id === aId ? {
+            ...s,
+            routePoints: routed.ok ? routed.points : [],
+            routingFailed: !routed.ok,
+          } : s);
           segsRef.current = r;
           syncMap(r);
           pushHist(r);
@@ -390,9 +427,15 @@ export default function GpxEditor() {
         }
 
         setRouting(true);
-        const routePoints = await osrmRoute(seg.waypoints);
+        setRouteError(null);
+        const routed = await routeForMode(seg.waypoints, transportModeRef.current);
+        if (!routed.ok) setRouteError(routed.message ?? "No se pudo calcular la ruta.");
         setSegments(prev => {
-          const r = prev.map(s => s.id === di.segId ? { ...s, routePoints } : s);
+          const r = prev.map(s => s.id === di.segId ? {
+            ...s,
+            routePoints: routed.ok ? routed.points : [],
+            routingFailed: !routed.ok,
+          } : s);
           segsRef.current = r;
           syncMap(r);
           pushHist(r);
@@ -485,9 +528,12 @@ export default function GpxEditor() {
     if (!seg || seg.waypoints.length < 3) return;
     const closed: LngLat[] = [...seg.waypoints, seg.waypoints[0]];
     setRouting(true);
-    const routePoints = await osrmRoute(closed).catch(() => closed);
+    setRouteError(null);
+    const routed = await routeForMode(closed, transportModeRef.current);
+    const routePoints = routed.ok ? routed.points : [];
+    if (!routed.ok) setRouteError(routed.message ?? "No se pudo cerrar el bucle.");
     const upd = segsRef.current.map(s =>
-      s.id === activeIdRef.current ? { ...s, waypoints: closed, routePoints } : s,
+      s.id === activeIdRef.current ? { ...s, waypoints: closed, routePoints, routingFailed: !routed.ok } : s,
     );
     segsRef.current = upd;
     setSegments(upd);
@@ -529,15 +575,26 @@ export default function GpxEditor() {
 
   const handleLocate = useCallback(() => {
     if (!navigator.geolocation || !mapRef.current) return;
+    setLocating(true);
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         mapRef.current?.flyTo({
           center: [coords.longitude, coords.latitude],
-          zoom: 14,
+          zoom: 15,
           duration: 1200,
         });
+        setLocating(false);
+        if (coords.accuracy > 80) {
+          setRouteError("Precisión GPS aún baja — espera unos segundos.");
+        } else {
+          setRouteError(null);
+        }
       },
-      () => { /* location denied or unavailable */ },
+      () => {
+        setLocating(false);
+        setRouteError("No se pudo obtener tu ubicación. Revisa permisos del navegador.");
+      },
+      { enableHighAccuracy: true, timeout: 12000 },
     );
   }, []);
 
@@ -669,6 +726,28 @@ export default function GpxEditor() {
   const totalWpts     = segments.reduce((a, s) => a + s.waypoints.length, 0);
   const totalRoutePts = segments.reduce((a, s) => a + s.routePoints.length, 0);
   const activeSeg     = segments.find(s => s.id === activeId) ?? segments[0];
+  const routeHealth   = analyzeRouteHealth(
+    segments.map((s) => ({
+      waypoints: s.waypoints,
+      routePoints: s.routePoints,
+      mode: transportMode,
+      routingFailed: s.routingFailed,
+    })),
+  );
+
+  const restoreDraft = useCallback(() => {
+    const draft = loadDraft();
+    if (!draft?.segments || !Array.isArray(draft.segments)) return;
+    const restored = draft.segments as Segment[];
+    segsRef.current = restored;
+    setSegments(restored);
+    setRouteTitle(draft.routeTitle);
+    setTransportMode((draft.transportMode as TransportMode) || "moto");
+    setEditorMode(draft.editorMode === "advanced" ? "advanced" : "simple");
+    setDraftBanner(null);
+    syncMap(restored);
+    pushHist(restored);
+  }, [syncMap, pushHist]);
 
   // ── Sidebar content (shared: desktop aside + mobile drawer) ──────────────
   const sidebarContent = (
@@ -676,11 +755,79 @@ export default function GpxEditor() {
 
       {/* Header */}
       <div>
-        <h2 className="text-sm font-bold text-white">Editor GPX Pro</h2>
+        <h2 className="text-sm font-bold text-white">NavRide Route Studio</h2>
         <p className="text-xs text-white/40 mt-0.5">
-          Clic en mapa · Arrastra nodos · Colores por tramo
+          Clic · Arrastra · Deshacer · Modo de transporte
         </p>
       </div>
+
+      {draftBanner && (
+        <button
+          type="button"
+          onClick={restoreDraft}
+          className="text-left text-xs rounded-lg border border-[#FF9500]/30 bg-[#FF9500]/10 px-3 py-2 text-[#FF9500]"
+        >
+          Recuperar borrador — {draftBanner}
+        </button>
+      )}
+
+      <div className="flex gap-1 rounded-lg bg-white/5 p-1">
+        {(["simple", "advanced"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setEditorMode(m)}
+            className={`flex-1 rounded-md py-1.5 text-xs font-medium ${
+              editorMode === m ? "bg-[#FF5A1F] text-white" : "text-white/50"
+            }`}
+          >
+            {m === "simple" ? "Simple" : "Avanzado"}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs text-white/40 uppercase tracking-widest">Modo</label>
+        <div className="grid grid-cols-2 gap-1.5">
+          {TRANSPORT_MODES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setTransportMode(m.id)}
+              className={`rounded-lg border px-2 py-2 text-xs ${
+                transportMode === m.id
+                  ? "border-[#FF5A1F]/50 bg-[#FF5A1F]/10 text-white"
+                  : "border-white/10 text-white/50"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div
+        className={`rounded-lg px-3 py-2 text-xs border ${
+          routeHealth.health === "GOOD"
+            ? "border-green-500/30 text-green-400 bg-green-500/5"
+            : routeHealth.health === "REVIEW"
+              ? "border-[#FF9500]/30 text-[#FF9500] bg-[#FF9500]/5"
+              : "border-red-500/30 text-red-400 bg-red-500/5"
+        }`}
+      >
+        Salud: {routeHealth.health}
+        {(routeHealth.issues[0] ?? routeHealth.warnings[0]) && (
+          <p className="mt-1 opacity-80">
+            {routeHealth.issues[0] ?? routeHealth.warnings[0]}
+          </p>
+        )}
+      </div>
+
+      {routeError && (
+        <div className="text-xs rounded-lg px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-300">
+          {routeError}
+        </div>
+      )}
 
       {/* Route name */}
       <div className="flex flex-col gap-1.5">
@@ -745,7 +892,13 @@ export default function GpxEditor() {
                       <Palette size={9} className="text-white/90" />
                     </button>
                     {colorPopoverSegId === seg.id && (
-                      <div className="absolute top-full mt-2 left-0 bg-[#1a1a1a] border border-white/15 rounded-xl p-2 shadow-2xl z-30">
+                      <div className="absolute top-full mt-2 left-0 bg-[#1a1a1a] border border-white/15 rounded-xl p-2 shadow-2xl z-30 min-w-[140px]">
+                        {editorMode === "advanced" ? (
+                          <TrackColorPicker
+                            value={seg.color}
+                            onChange={(c) => handleColor(seg.id, c)}
+                          />
+                        ) : (
                         <div className="flex flex-wrap gap-1.5" style={{ width: "116px" }}>
                           {COLORS.map(c => (
                             <button
@@ -765,6 +918,7 @@ export default function GpxEditor() {
                             />
                           ))}
                         </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -843,6 +997,11 @@ export default function GpxEditor() {
           {uploadMsg.text}
         </div>
       )}
+
+      <RouteDoctorPanel
+        pointCount={totalRoutePts > 0 ? totalRoutePts : totalWpts}
+        modeLabel="Ruta GPX"
+      />
 
     </div>
   );

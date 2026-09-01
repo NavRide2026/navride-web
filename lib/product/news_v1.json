@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-01",
+  "entries": [
+    {
+      "id": "2026-09-01-android-auto",
+      "title": "Android Auto integrado en la app",
+      "summary": "NavRide puede mostrarse en pantallas compatibles con Android Auto usando el mismo núcleo de navegación que el móvil.",
+      "date": "2026-09-01",
+      "platforms": ["app"],
+      "featureIds": ["androidAuto"],
+      "version": "0.10.51",
+      "public": true
+    },
+    {
+      "id": "2026-09-01-route-studio",
+      "title": "NavRide Route Studio renovado",
+      "summary": "Editor web con deshacer/rehacer, routing por modo de transporte, salud de ruta y borrador automático.",
+      "date": "2026-09-01",
+      "platforms": ["web"],
+      "featureIds": ["gpxWebStudio"],
+      "version": "1.0.0",
+      "public": true
+    },
+    {
+      "id": "2026-08-31-capabilities",
+      "title": "Roadmap basado en evidencias",
+      "summary": "La web y la app comparten el mismo catálogo de capabilities — sin porcentajes inventados.",
+      "date": "2026-08-31",
+      "platforms": ["app", "web"],
+      "featureIds": ["coreNavigation"],
+      "version": "0.10.50",
+      "public": true
+    },
+    {
+      "id": "2026-08-29-gpx-private",
+      "title": "GPX privado en la nube",
+      "summary": "Las rutas del editor web se guardan en bucket privado con acceso por cuenta.",
+      "date": "2026-08-29",
+      "platforms": ["web", "app"],
+      "featureIds": ["routeSync"],
+      "version": "0.10.48",
+      "public": true
+    }
+  ]
+}

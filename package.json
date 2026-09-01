@@ -8,7 +8,9 @@
     "prebuild": "npm run generate:legal",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "validate:product": "node scripts/validate-product-registry.mjs",
+    "test:product": "node scripts/validate-product-registry.mjs && node --test tests/product/*.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",
