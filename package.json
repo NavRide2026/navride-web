@@ -10,7 +10,9 @@
     "start": "next start",
     "lint": "eslint",
     "validate:product": "node scripts/validate-product-registry.mjs",
-    "test:product": "node scripts/validate-product-registry.mjs && node --test tests/product/*.test.mjs"
+    "test:product": "node scripts/validate-product-registry.mjs && node --test tests/product/*.test.mjs",
+    "test:route-studio": "node --experimental-strip-types --test tests/route-studio/*.test.mjs",
+    "test": "npm run test:product && npm run test:route-studio"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",

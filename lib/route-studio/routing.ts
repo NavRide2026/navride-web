@@ -1,3 +1,5 @@
+import { haversineKm } from "./geo";
+
 export type LngLat = [number, number];
 
 export type TransportMode = "walk" | "bike" | "moto" | "car";
@@ -24,13 +26,14 @@ export const TRANSPORT_MODES: {
     id: "moto",
     label: "Moto",
     osrmProfile: "driving",
-    description: "Carreteras motorizadas (OSRM driving; restricciones finas en app).",
+    description:
+      "Usa perfil OSRM driving (mismo que coche por ahora; modo separado para futuro).",
   },
   {
     id: "car",
     label: "Coche",
     osrmProfile: "driving",
-    description: "Red viaria motorizada.",
+    description: "Red viaria motorizada (perfil OSRM driving).",
   },
 ];
 
@@ -87,7 +90,7 @@ export async function routeWaypoints(
         ok: false,
         profile: modeDef.osrmProfile,
         reason: "mode_unreachable",
-        message: `No hay ruta en modo ${modeDef.label} hasta ese punto.`,
+        message: `Punto inalcanzable en modo ${modeDef.label}: no hay ruta OSRM hasta ahí.`,
       };
     }
     return {
@@ -136,5 +139,3 @@ export function detectAbsurdDetour(
   if (direct < 0.05) return false;
   return routeLen > direct * 4 && direct < 2;
 }
-
-import { haversineKm } from "./geo";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 type Props = {
   value: string;
@@ -53,7 +53,7 @@ export function TrackColorPicker({ value, onChange }: Props) {
   const [h, s, v] = useMemo(() => hexToHsv(value), [value]);
 
   const setHsv = (nh: number, ns: number, nv: number) => {
-    onChange(hsvToHex(nh, ns, nv));
+    onChange(hsvToHex(nh, ns, Math.max(10, nv)));
   };
 
   return (

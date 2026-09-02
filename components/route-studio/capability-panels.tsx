@@ -1,39 +1,52 @@
 "use client";
 
 import { stageToUx, type NavRideCapability } from "@/lib/capabilities/catalog";
+import type { RouteHealthReport } from "@/lib/route-studio/route-health";
 
-/** Panel ligero Route Studio — no inventa hallazgos sin datos. */
+/** Panel Route Doctor — usa analyzeRouteHealth (sin stub de hallazgos inventados). */
 export function RouteDoctorPanel({
-  pointCount,
+  report,
   modeLabel,
+  pointCount,
 }: {
-  pointCount: number;
+  report: RouteHealthReport;
   modeLabel: string;
+  pointCount: number;
 }) {
-  const findings: string[] = [];
-  if (pointCount < 2) {
-    findings.push("No hay geometría suficiente para analizar.");
-  } else {
-    findings.push(`${pointCount} puntos en el track.`);
-    findings.push(`Modo seleccionado: ${modeLabel}.`);
-    findings.push(
-      "Análisis OSM profundo se completa en la app con grafo local / routing.",
-    );
-  }
+  const healthClass =
+    report.health === "GOOD"
+      ? "text-green-400"
+      : report.health === "REVIEW"
+        ? "text-[#FF9500]"
+        : "text-red-400";
 
   return (
     <div className="rounded-xl border border-white/10 bg-[#101114] p-4 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-white font-medium">Route Doctor</h3>
-        <span className="text-[11px] uppercase tracking-wide text-white/50">
-          Vista previa web
+        <span className={`text-[11px] uppercase tracking-wide font-semibold ${healthClass}`}>
+          {report.health}
         </span>
       </div>
-      <ul className="text-sm text-white/70 space-y-1">
-        {findings.map((f) => (
-          <li key={f}>• {f}</li>
-        ))}
-      </ul>
+      <p className="text-xs text-white/40">
+        {pointCount} pts · Modo {modeLabel}
+      </p>
+      {report.issues.length === 0 && report.warnings.length === 0 ? (
+        <p className="text-sm text-white/70">Sin hallazgos — geometría coherente.</p>
+      ) : (
+        <ul className="text-sm text-white/70 space-y-1">
+          {report.issues.map((f) => (
+            <li key={`i-${f}`} className="text-red-300">
+              • {f}
+            </li>
+          ))}
+          {report.warnings.map((f) => (
+            <li key={`w-${f}`} className="text-[#FF9500]">
+              • {f}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
