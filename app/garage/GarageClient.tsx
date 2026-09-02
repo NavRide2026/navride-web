@@ -54,13 +54,17 @@ function categoryLabel(cat: string): string {
   return CATEGORIES.find((c) => c.id === cat)?.label ?? cat;
 }
 
-export default function GarageClient() {
+export default function GarageClient({
+  initialItems = [],
+}: {
+  initialItems?: GarageItem[];
+}) {
   const supabase = useMemo(() => createClient(), []);
-  const [items, setItems] = useState<GarageItem[]>([]);
+  const [items, setItems] = useState<GarageItem[]>(initialItems);
   const [owned, setOwned] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
   const [cat, setCat] = useState<GarageCategory>("all");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialItems.length === 0);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
