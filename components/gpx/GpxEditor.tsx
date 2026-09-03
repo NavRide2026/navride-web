@@ -61,8 +61,15 @@ import {
 import {
   postToNavRideApp,
   registerAppToEditorHandler,
+  newBridgeRequestId,
   type NavRideEditorBridgeMessage,
 } from "@/lib/route-studio/navride-editor-bridge";
+import {
+  SRC_ROUTE_NOTES,
+  LYR_ROUTE_NOTES,
+  buildRouteNotesGeoJSON,
+  routeNotesCirclePaint,
+} from "@/lib/route-studio/route-notes-geojson";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type LngLat = [number, number];
@@ -107,6 +114,7 @@ const LYR_LINES  = "nav-lyr-lines";
 const LYR_POINTS = "nav-lyr-points";
 const LYR_USER   = "nav-user-dot";
 const LYR_USER_RING = "nav-user-ring";
+// Route notes use SRC_ROUTE_NOTES / LYR_ROUTE_NOTES from route-notes-geojson.
 
 const COLORS = [
   { label: "Naranja", value: "#f97316", desc: "General"            },
@@ -336,10 +344,13 @@ export default function GpxEditor({
   const [userLngLat, setUserLngLat] = useState<LngLat | null>(null);
   const [insertMode, setInsertMode] = useState(false);
   const [cues, setCues] = useState<NavRideCue[]>([]);
+  const [selectedCueId, setSelectedCueId] = useState<string | null>(null);
   const [cueDraftSeverity, setCueDraftSeverity] = useState<NavRideCueSeverity>("attention");
   const [cueDraftMessage, setCueDraftMessage] = useState("");
   const [importDialog, setImportDialog] = useState<ImportDialogState | null>(null);
   const gpxFileInputRef = useRef<HTMLInputElement>(null);
+  const cuesRef = useRef<NavRideCue[]>([]);
+  const pendingLocateReqRef = useRef<string | null>(null);
 
   const transportModeRef = useRef<TransportMode>("moto");
   const editorModeRef = useRef<EditorMode>("simple");
@@ -363,6 +374,7 @@ export default function GpxEditor({
 
   useEffect(() => { segsRef.current = segments; },   [segments]);
   useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+  useEffect(() => { cuesRef.current = cues; }, [cues]);
   useEffect(() => { transportModeRef.current = transportMode; }, [transportMode]);
   useEffect(() => { editorModeRef.current = editorMode; }, [editorMode]);
   useEffect(() => { trackWidthRef.current = trackWidth; }, [trackWidth]);
@@ -440,7 +452,20 @@ export default function GpxEditor({
     } catch { /* */ }
   }, []);
 
+  const syncRouteNotes = useCallback((
+    nextCues: NavRideCue[] = cuesRef.current,
+    nextSegs: Segment[] = segsRef.current,
+  ) => {
+    const map = mapRef.current;
+    if (!map || !mapReady.current) return;
+    const data = buildRouteNotesGeoJSON(nextCues, nextSegs);
+    try {
+      map.getSource(SRC_ROUTE_NOTES)?.setData(data);
+    } catch { /* */ }
+  }, []);
+
   useEffect(() => { syncUserMarker(userLngLat); }, [userLngLat, syncUserMarker]);
+  useEffect(() => { syncRouteNotes(cues, segments); }, [cues, segments, syncRouteNotes]);
 
   // ── History ──
   const pushHist = useCallback((segs: Segment[]) => {
@@ -474,10 +499,10 @@ export default function GpxEditor({
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const setupLayers = (m: any) => {
-      [LYR_USER, LYR_USER_RING, LYR_POINTS, LYR_LINES, LYR_GLOW, LYR_CASING].forEach(l => {
+      [LYR_USER, LYR_USER_RING, LYR_ROUTE_NOTES, LYR_POINTS, LYR_LINES, LYR_GLOW, LYR_CASING].forEach(l => {
         if (m.getLayer(l)) m.removeLayer(l);
       });
-      [SRC_LINES, SRC_POINTS, SRC_USER].forEach(s => {
+      [SRC_LINES, SRC_POINTS, SRC_USER, SRC_ROUTE_NOTES].forEach(s => {
         if (m.getSource(s)) m.removeSource(s);
       });
 
@@ -491,6 +516,10 @@ export default function GpxEditor({
       m.addSource(SRC_USER, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
+      });
+      m.addSource(SRC_ROUTE_NOTES, {
+        type: "geojson",
+        data: buildRouteNotesGeoJSON(cuesRef.current, segsRef.current),
       });
 
       // Route layers ABOVE satellite label layers (added last = on top)
@@ -582,6 +611,13 @@ export default function GpxEditor({
         },
       });
 
+      m.addLayer({
+        id: LYR_ROUTE_NOTES,
+        type: "circle",
+        source: SRC_ROUTE_NOTES,
+        paint: { ...routeNotesCirclePaint },
+      });
+
       mapReady.current = true;
       styleChangingRef.current = false;
     };
@@ -590,6 +626,14 @@ export default function GpxEditor({
     const attachEvents = (m: any) => {
       if (eventsAttached) return;
       eventsAttached = true;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      m.on("click", LYR_ROUTE_NOTES, (e: any) => {
+        if (!e.features?.[0]) return;
+        e.originalEvent?.stopPropagation?.();
+        const id = String(e.features[0].properties?.id ?? "");
+        if (id) setSelectedCueId(id);
+      });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       m.on("click", LYR_POINTS, (e: any) => {
@@ -606,6 +650,8 @@ export default function GpxEditor({
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       m.on("click", async (e: any) => {
+        const noteHit = m.queryRenderedFeatures(e.point, { layers: [LYR_ROUTE_NOTES] });
+        if (noteHit.length > 0) return;
         const hit = m.queryRenderedFeatures(e.point, { layers: [LYR_POINTS] });
         if (hit.length > 0) return;
         if (styleChangingRef.current) return;
@@ -1052,11 +1098,29 @@ export default function GpxEditor({
   }, [syncMap, pushHist]);
 
   const handleLocate = useCallback(() => {
+    if (!mapRef.current) return;
+
+    // App embed: NavRide owns location — never ask browser permissions.
+    if (embedNavRideApp) {
+      setLocating(true);
+      setRouteError(null);
+      const requestId = newBridgeRequestId();
+      pendingLocateReqRef.current = requestId;
+      postToNavRideApp("REQUEST_CURRENT_LOCATION", {}, requestId);
+      // Soft timeout if App never answers (bridge broken).
+      window.setTimeout(() => {
+        if (pendingLocateReqRef.current !== requestId) return;
+        pendingLocateReqRef.current = null;
+        setLocating(false);
+        setRouteError("No se ha podido obtener tu ubicación.");
+      }, 8000);
+      return;
+    }
+
     if (!navigator.geolocation) {
       setRouteError("Geolocalización no disponible en este navegador.");
       return;
     }
-    if (!mapRef.current) return;
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
@@ -1087,7 +1151,38 @@ export default function GpxEditor({
       },
       { enableHighAccuracy: true, timeout: 12000 },
     );
+  }, [syncUserMarker, embedNavRideApp]);
+
+  const applyAppCurrentLocation = useCallback((payload: Record<string, unknown> | undefined) => {
+    const lat = Number(payload?.latitude);
+    const lon = Number(payload?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      setLocating(false);
+      setRouteError("No se ha podido obtener tu ubicación.");
+      return;
+    }
+    const ll: LngLat = [lon, lat];
+    setUserLngLat(ll);
+    syncUserMarker(ll);
+    const zoom = mapRef.current?.getZoom?.() ?? 15;
+    mapRef.current?.flyTo({
+      center: ll,
+      zoom: Math.max(zoom, 14),
+      duration: 1000,
+    });
+    setLocating(false);
+    setRouteError(null);
   }, [syncUserMarker]);
+
+  const applyAppLocationError = useCallback((payload: Record<string, unknown> | undefined) => {
+    setLocating(false);
+    const reason = String(payload?.reason ?? "LOCATION_UNAVAILABLE");
+    if (reason === "PERMISSION_DENIED") {
+      setRouteError("NavRide necesita permiso de ubicación.");
+    } else {
+      setRouteError("No se ha podido obtener tu ubicación.");
+    }
+  }, []);
 
   const handleFitRoute = useCallback(() => {
     const map = mapRef.current;
@@ -1246,6 +1341,21 @@ export default function GpxEditor({
 
   const handleDeleteCue = useCallback((cueId: string) => {
     setCues((prev) => prev.filter((c) => c.cueId !== cueId));
+    setSelectedCueId((cur) => (cur === cueId ? null : cur));
+  }, []);
+
+  const handleUpdateCueSeverity = useCallback((cueId: string, severity: NavRideCueSeverity) => {
+    setCues((prev) =>
+      prev.map((c) =>
+        c.cueId === cueId
+          ? {
+              ...c,
+              severity,
+              title: cueSeverityLabel(severity),
+            }
+          : c,
+      ),
+    );
   }, []);
 
   const routeSignature = useCallback(() => {
@@ -1441,13 +1551,33 @@ export default function GpxEditor({
       if (msg.type === "CONFIG") {
         // locale/units reserved — no-op for now
       }
+      if (msg.type === "CURRENT_LOCATION") {
+        if (
+          pendingLocateReqRef.current &&
+          msg.requestId !== pendingLocateReqRef.current
+        ) {
+          return;
+        }
+        pendingLocateReqRef.current = null;
+        applyAppCurrentLocation(msg.payload);
+      }
+      if (msg.type === "CURRENT_LOCATION_ERROR") {
+        if (
+          pendingLocateReqRef.current &&
+          msg.requestId !== pendingLocateReqRef.current
+        ) {
+          return;
+        }
+        pendingLocateReqRef.current = null;
+        applyAppLocationError(msg.payload);
+      }
     });
     return () => {
       unreg();
       window.__navrideEmbedReady = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embedNavRideApp]);
+  }, [embedNavRideApp, applyAppCurrentLocation, applyAppLocationError]);
 
   useEffect(() => {
     if (!embedNavRideApp) return;
@@ -1501,7 +1631,9 @@ export default function GpxEditor({
       <div>
         <h2 className="text-sm font-bold text-white">NavRide Route Studio</h2>
         <p className="text-xs text-white/40 mt-0.5">
-          Mapa a pantalla completa · Clic · Deshacer (Ctrl+Z)
+          {embedNavRideApp
+            ? "Mapa a pantalla completa · Clic · Deshacer último punto"
+            : "Mapa a pantalla completa · Clic · Deshacer (Ctrl+Z)"}
         </p>
       </div>
 
@@ -1824,7 +1956,12 @@ export default function GpxEditor({
               {cues.map((c) => (
                 <li
                   key={c.cueId}
-                  className="flex items-start gap-2 rounded-lg bg-white/3 px-2 py-1.5 text-[11px]"
+                  className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-[11px] cursor-pointer ${
+                    selectedCueId === c.cueId
+                      ? "bg-white/10 ring-1 ring-white/20"
+                      : "bg-white/3"
+                  }`}
+                  onClick={() => setSelectedCueId(c.cueId)}
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-white/70 truncate">
@@ -1835,11 +1972,32 @@ export default function GpxEditor({
                     <p className="text-white/25 text-[10px]">
                       @{Math.round(c.progressM)} m
                     </p>
+                    {selectedCueId === c.cueId && (
+                      <select
+                        value={c.severity}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) =>
+                          handleUpdateCueSeverity(
+                            c.cueId,
+                            e.target.value as NavRideCueSeverity,
+                          )
+                        }
+                        className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-1.5 py-1 text-[10px] text-white"
+                        aria-label="Tipo de nota"
+                      >
+                        {(Object.keys(CUE_SEVERITY_LABELS_ES) as NavRideCueSeverity[]).map((s) => (
+                          <option key={s} value={s}>{CUE_SEVERITY_LABELS_ES[s]}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <button
                     type="button"
                     title="Eliminar cue"
-                    onClick={() => handleDeleteCue(c.cueId)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteCue(c.cueId);
+                    }}
                     className="text-white/30 hover:text-red-400 shrink-0"
                   >
                     <Trash2 size={12} />
@@ -2027,18 +2185,36 @@ export default function GpxEditor({
 
         {/* ── Floating edit toolbar (left) ── */}
         <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">
-          <button onClick={handleUndo} title="Deshacer (Ctrl+Z)" disabled={histIdx === 0}
-            className="w-9 h-9 rounded-lg bg-[#0a0a0a]/90 border border-white/15 flex items-center justify-center text-white/70 hover:text-white disabled:opacity-30 transition shadow-lg">
-            <Undo2 size={15} />
-          </button>
-          <button onClick={handleRedo} title="Rehacer (Ctrl+Y)" disabled={histIdx >= histLen - 1}
-            className="w-9 h-9 rounded-lg bg-[#0a0a0a]/90 border border-white/15 flex items-center justify-center text-white/70 hover:text-white disabled:opacity-30 transition shadow-lg">
-            <Redo2 size={15} />
-          </button>
           <button onClick={handleClear} title="Borrar segmento activo"
             disabled={!activeSeg || activeSeg.waypoints.length === 0}
-            className="w-9 h-9 rounded-lg bg-[#0a0a0a]/90 border border-white/15 flex items-center justify-center text-white/70 hover:text-red-400 disabled:opacity-30 transition shadow-lg">
+            className="w-9 h-9 rounded-lg bg-[#0a0a0a]/90 border border-white/15 flex items-center justify-center text-white/70 hover:text-red-400 disabled:opacity-30 transition shadow-lg"
+            aria-label="Borrar segmento activo">
             <Trash2 size={15} />
+          </button>
+          <button
+            onClick={handleUndo}
+            title={embedNavRideApp ? "Deshacer último punto" : "Deshacer (Ctrl+Z)"}
+            disabled={histIdx === 0}
+            className={`rounded-lg bg-[#0a0a0a]/90 border border-white/15 flex items-center justify-center text-white/70 hover:text-white disabled:opacity-30 transition shadow-lg ${
+              embedNavRideApp ? "h-9 px-2.5 gap-1.5 min-w-9" : "w-9 h-9"
+            }`}
+            aria-label="Deshacer último punto"
+          >
+            <Undo2 size={15} />
+            {embedNavRideApp && (
+              <span className="text-[10px] font-medium whitespace-nowrap pr-0.5">
+                Deshacer último punto
+              </span>
+            )}
+          </button>
+          <button
+            onClick={handleRedo}
+            title={embedNavRideApp ? "Rehacer" : "Rehacer (Ctrl+Y)"}
+            disabled={histIdx >= histLen - 1}
+            className="w-9 h-9 rounded-lg bg-[#0a0a0a]/90 border border-white/15 flex items-center justify-center text-white/70 hover:text-white disabled:opacity-30 transition shadow-lg"
+            aria-label="Rehacer"
+          >
+            <Redo2 size={15} />
           </button>
           {advanced && (
             <button onClick={handleCloseLoop} title="Cerrar loop"

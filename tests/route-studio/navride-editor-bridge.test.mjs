@@ -37,6 +37,25 @@ describe("NavRideEditorBridge v1", () => {
     }
   });
 
+  it("encodes location bridge messages", () => {
+    const req = encodeBridgeMessage("REQUEST_CURRENT_LOCATION", undefined, "req-loc");
+    assert.equal(parseBridgeMessage(req).ok, true);
+    const ok = encodeBridgeMessage(
+      "CURRENT_LOCATION",
+      { latitude: 1, longitude: 2, accuracyMeters: 5, timestampMs: 9 },
+      "req-loc",
+    );
+    const parsedOk = parseBridgeMessage(ok);
+    assert.equal(parsedOk.ok, true);
+    if (parsedOk.ok) assert.equal(parsedOk.message.type, "CURRENT_LOCATION");
+    const err = encodeBridgeMessage(
+      "CURRENT_LOCATION_ERROR",
+      { reason: "PERMISSION_DENIED" },
+      "req-loc",
+    );
+    assert.equal(parseBridgeMessage(err).ok, true);
+  });
+
   it("rejects unknown type and bad schema", () => {
     assert.equal(
       parseBridgeMessage(

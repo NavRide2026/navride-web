@@ -17,7 +17,15 @@ export type NavRideEditorBridgeType =
   | "CONFIG"
   | "SAVE_RESULT"
   | "EXPORT_ACK"
-  | "LOAD_ROUTE";
+  | "LOAD_ROUTE"
+  | "REQUEST_CURRENT_LOCATION"
+  | "CURRENT_LOCATION"
+  | "CURRENT_LOCATION_ERROR";
+
+export type NavRideCurrentLocationErrorReason =
+  | "PERMISSION_DENIED"
+  | "LOCATION_UNAVAILABLE"
+  | "TIMEOUT";
 
 export type NavRideEditorBridgeMessage = {
   schemaVersion: typeof NAVRIDE_EDITOR_BRIDGE_SCHEMA;
@@ -38,6 +46,9 @@ const ALLOWED = new Set<string>([
   "SAVE_RESULT",
   "EXPORT_ACK",
   "LOAD_ROUTE",
+  "REQUEST_CURRENT_LOCATION",
+  "CURRENT_LOCATION",
+  "CURRENT_LOCATION_ERROR",
 ]);
 
 export function isNavRideAppEmbed(embed: string | null | undefined): boolean {
