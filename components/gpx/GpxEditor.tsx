@@ -58,6 +58,11 @@ import {
   cueSeverityLabel,
   CUE_SEVERITY_LABELS_ES,
 } from "@/lib/route-studio/cues";
+import {
+  postToNavRideApp,
+  registerAppToEditorHandler,
+  type NavRideEditorBridgeMessage,
+} from "@/lib/route-studio/navride-editor-bridge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type LngLat = [number, number];
@@ -290,7 +295,11 @@ function mkSeg(color = COLORS[0].value): Segment {
 // ─── Component ────────────────────────────────────────────────────────────────
 const INIT_SEG = mkSeg();
 
-export default function GpxEditor() {
+export default function GpxEditor({
+  embedNavRideApp = false,
+}: {
+  embedNavRideApp?: boolean;
+}) {
   const mapContainer = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef   = useRef<any>(null);
@@ -1100,7 +1109,19 @@ export default function GpxEditor() {
       s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints : [],
     );
     if (allPts.length < 2) return;
+    const pts = segments.flatMap(s =>
+      s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints : [],
+    );
     const gpx  = exportGpx(segments, routeTitle, cues);
+    const routeJson = buildRouteJson(segments, routeTitle, cues, pts);
+    if (embedNavRideApp) {
+      postToNavRideApp("EXPORT_GPX", {
+        gpxXml: gpx,
+        fileName: `${routeTitle.replace(/\s+/g, "_")}.gpx`,
+        route: routeJson as unknown as Record<string, unknown>,
+      });
+      return;
+    }
     const blob = new Blob([gpx], { type: "application/gpx+xml" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
@@ -1108,7 +1129,7 @@ export default function GpxEditor() {
     a.download = `${routeTitle.replace(/\s+/g, "_")}.gpx`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [segments, routeTitle, cues]);
+  }, [segments, routeTitle, cues, embedNavRideApp]);
 
   const applyImportedGeometry = useCallback((
     geometry: { lat: number; lon: number }[],
@@ -1276,8 +1297,47 @@ export default function GpxEditor() {
     return result.routeId;
   }, [segments, routeTitle, routeSignature, savedRouteId, cues]);
 
+  const persistToApp = useCallback((alsoOpen: boolean) => {
+    const allPts = segments.flatMap(s =>
+      s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints : [],
+    );
+    if (allPts.length < 2) {
+      setUploadMsg({
+        ok: false,
+        text: "No hay geometría enrutada válida para guardar.",
+      });
+      return;
+    }
+    const gpx = exportGpx(segments, routeTitle, cues);
+    const routeJson = buildRouteJson(segments, routeTitle, cues, allPts);
+    postToNavRideApp(alsoOpen ? "OPEN_IN_NAVRIDE" : "SAVE_ROUTE", {
+      gpxXml: gpx,
+      route: routeJson as unknown as Record<string, unknown>,
+      name: routeTitle,
+      routeId: savedRouteId,
+      distanceM: totalKm(segments) * 1000,
+      waypointsCount: allPts.length,
+    });
+    setSavedSignature(routeSignature());
+    clearDraft();
+    setDraftBanner(null);
+    setUploadMsg({
+      ok: true,
+      text: alsoOpen
+        ? "Enviando a NavRide…"
+        : "Guardando en NavRide…",
+    });
+  }, [segments, routeTitle, cues, savedRouteId, routeSignature]);
+
   const handleSave = useCallback(async () => {
     if (saving || uploading) return;
+    if (embedNavRideApp) {
+      setSaving(true);
+      setUploadMsg(null);
+      persistToApp(false);
+      setSaving(false);
+      return;
+    }
     setSaving(true);
     setUploadMsg(null);
     const id = await persistRoute();
@@ -1291,12 +1351,18 @@ export default function GpxEditor() {
       });
     }
     setSaving(false);
-  }, [persistRoute, saving, uploading, savedRouteId]);
+  }, [persistRoute, saving, uploading, savedRouteId, embedNavRideApp, persistToApp]);
 
   const handleLaunch = useCallback(async () => {
     if (saving || uploading) return;
     setUploading(true);
     setUploadMsg(null);
+
+    if (embedNavRideApp) {
+      persistToApp(true);
+      setUploading(false);
+      return;
+    }
 
     try {
       let routeId = savedRouteId;
@@ -1326,7 +1392,68 @@ export default function GpxEditor() {
       setUploadMsg({ ok: false, text: `Error inesperado: ${msg}` });
     }
     setUploading(false);
-  }, [persistRoute, routeSignature, savedRouteId, savedSignature, saving, uploading]);
+  }, [persistRoute, routeSignature, savedRouteId, savedSignature, saving, uploading, embedNavRideApp, persistToApp]);
+
+  // ── App embed bridge ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!embedNavRideApp) return;
+    window.__navrideEmbedReady = true;
+    postToNavRideApp("READY", {
+      capabilities: {
+        save: true,
+        exportGpx: true,
+        openInNavRide: true,
+        importGpx: true,
+        cloudSaveViaApp: true,
+      },
+    });
+    const unreg = registerAppToEditorHandler((msg: NavRideEditorBridgeMessage) => {
+      if (msg.type === "LOAD_ROUTE") {
+        const gpxXml = typeof msg.payload?.gpxXml === "string" ? msg.payload.gpxXml : "";
+        if (!gpxXml) return;
+        const parsed = parseGpxFile(gpxXml);
+        if (!parsed.recoverable || parsed.geometry.length < 2) {
+          setRouteError(parsed.issues[0] ?? "GPX no válido.");
+          return;
+        }
+        applyImportedGeometry(parsed.geometry, parsed.extensions, false);
+        if (typeof msg.payload?.routeId === "string") {
+          setSavedRouteId(msg.payload.routeId);
+        }
+        setSavedSignature(routeSignature());
+        setUploadMsg({ ok: true, text: "Ruta cargada desde NavRide." });
+      }
+      if (msg.type === "SAVE_RESULT") {
+        const ok = msg.payload?.ok === true;
+        const routeId = typeof msg.payload?.routeId === "string" ? msg.payload.routeId : null;
+        if (ok && routeId) setSavedRouteId(routeId);
+        setUploadMsg({
+          ok,
+          text: ok
+            ? "Guardado en NavRide."
+            : String(msg.payload?.error ?? "No se pudo guardar."),
+        });
+        if (ok) {
+          setSavedSignature(routeSignature());
+          clearDraft();
+        }
+      }
+      if (msg.type === "CONFIG") {
+        // locale/units reserved — no-op for now
+      }
+    });
+    return () => {
+      unreg();
+      window.__navrideEmbedReady = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embedNavRideApp]);
+
+  useEffect(() => {
+    if (!embedNavRideApp) return;
+    const dirty = routeSignature() !== savedSignature;
+    postToNavRideApp("DIRTY_STATE_CHANGED", { dirty });
+  }, [embedNavRideApp, segments, routeTitle, cues, savedSignature, routeSignature]);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const km            = totalKm(segments);
@@ -1814,7 +1941,7 @@ export default function GpxEditor() {
       <button onClick={handleDownload} disabled={totalRoutePts < 2}
         className="flex items-center justify-center gap-2 rounded-full border border-white/15 py-2.5 text-sm text-white/70 hover:text-white hover:border-white/30 disabled:opacity-30 disabled:cursor-not-allowed transition">
         <Download size={14} />
-        Descargar GPX ({totalRoutePts} pts)
+        {embedNavRideApp ? `Exportar GPX (${totalRoutePts} pts)` : `Descargar GPX (${totalRoutePts} pts)`}
       </button>
 
       {/* Guardar en la nube */}
@@ -1824,10 +1951,12 @@ export default function GpxEditor() {
           ? <Loader2 size={14} className="animate-spin" />
           : <Cloud size={14} />}
         {saving
-          ? "Guardando en la web…"
-          : savedRouteId
-            ? "Actualizar en la web"
-            : "Guardar en la web"}
+          ? (embedNavRideApp ? "Guardando…" : "Guardando en la web…")
+          : embedNavRideApp
+            ? (savedRouteId ? "Guardar en NavRide" : "Guardar en NavRide")
+            : savedRouteId
+              ? "Actualizar en la web"
+              : "Guardar en la web"}
       </button>
 
       {/* Enviar a la app */}
@@ -1836,7 +1965,9 @@ export default function GpxEditor() {
         {uploading
           ? <Loader2 size={14} className="animate-spin" />
           : <Smartphone size={14} />}
-        {uploading ? "Enviando a la app…" : "Enviar a NavRide App"}
+        {uploading
+          ? (embedNavRideApp ? "Usando en NavRide…" : "Enviando a la app…")
+          : (embedNavRideApp ? "Guardar y usar en NavRide" : "Enviar a NavRide App")}
       </button>
 
       {savedRouteId && (

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { Suspense } from "react";
 import "./globals.css";
 import { BRAND, SITE_URL } from "@/lib/site/constants";
 import Navbar from "@/components/navbar/navbar";
@@ -77,7 +78,9 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col bg-[#050608] text-white font-sans">
-        <Navbar />
+        <Suspense fallback={null}>
+          <Navbar />
+        </Suspense>
         {children}
       </body>
     </html>

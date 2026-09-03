@@ -43,11 +43,15 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname
+  const embed = request.nextUrl.searchParams.get('embed')
 
   // ── Rutas privadas generales (requieren sesión) ──────────────────────────────
+  // embed=navride-app: editor presentation layer inside Flutter WebView — no web login.
   const privatePaths = ['/mi-garaje', '/editor-gpx', '/perfil']
   const isPrivate = privatePaths.some((p) => pathname.startsWith(p))
-  if (isPrivate && !user) {
+  const isAppEmbedEditor =
+    pathname.startsWith('/editor-gpx') && embed === 'navride-app'
+  if (isPrivate && !user && !isAppEmbedEditor) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 

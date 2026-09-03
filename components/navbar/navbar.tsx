@@ -3,8 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Menu, X, LogOut, Gauge } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
+import { isNavRideAppEmbed } from "@/lib/route-studio/navride-editor-bridge";
 
 const PUBLIC_LINKS = [
   { href: "/producto", label: "Producto" },
@@ -26,8 +28,14 @@ const APP_LINKS = [
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const hideForAppEmbed =
+    pathname.startsWith("/editor-gpx") &&
+    isNavRideAppEmbed(searchParams.get("embed"));
 
   useEffect(() => {
+    if (hideForAppEmbed) return;
     let unsub: (() => void) | undefined;
     import("@/lib/supabase/client")
       .then(({ createClient }) => {
@@ -41,14 +49,12 @@ export default function Navbar() {
           });
           unsub = () => subscription.unsubscribe();
         } catch {
-          // env vars missing
+          /* no supabase in some envs */
         }
       })
       .catch(() => {});
-    return () => {
-      unsub?.();
-    };
-  }, []);
+    return () => unsub?.();
+  }, [hideForAppEmbed]);
 
   useEffect(() => {
     if (!open) return;
@@ -58,6 +64,8 @@ export default function Navbar() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
+
+  if (hideForAppEmbed) return null;
 
   const handleSignOut = async () => {
     try {
