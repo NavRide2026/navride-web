@@ -25,6 +25,16 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: "/garage",
+        destination: "/producto",
+        permanent: true,
+      },
+      {
+        source: "/garage/:path*",
+        destination: "/producto",
+        permanent: true,
+      },
+      {
         source: "/privacy",
         destination: "/legal/politica-privacidad",
         permanent: true,
@@ -62,6 +72,11 @@ const nextConfig: NextConfig = {
       {
         source: "/legal/terminos-condiciones",
         destination: "/legal/terms.html",
+        permanent: true,
+      },
+      {
+        source: "/diseno",
+        destination: "/producto",
         permanent: true,
       },
       {

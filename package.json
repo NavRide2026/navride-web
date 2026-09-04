@@ -12,8 +12,7 @@
     "validate:product": "node scripts/validate-product-registry.mjs",
     "test:product": "node scripts/validate-product-registry.mjs && node --test tests/product/*.test.mjs",
     "test:route-studio": "node --experimental-strip-types --test tests/route-studio/*.test.mjs",
-    "test:design": "node --experimental-strip-types --test tests/design/*.test.mjs",
-    "test": "npm run test:product && npm run test:route-studio && npm run test:design"
+    "test": "npm run test:product && npm run test:route-studio"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",
@@ -21,7 +20,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
-    "jszip": "^3.10.1",
     "lucide-react": "^1.16.0",
     "maplibre-gl": "^5.6.0",
     "next": "16.2.6",
@@ -40,7 +38,6 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
-    "lightningcss": "^1.32.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

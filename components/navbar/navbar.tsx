@@ -7,23 +7,10 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Menu, X, LogOut, Gauge } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { isNavRideAppEmbed } from "@/lib/route-studio/navride-editor-bridge";
-
-const PUBLIC_LINKS = [
-  { href: "/producto", label: "Producto" },
-  { href: "/planes", label: "Planes" },
-  { href: "/funciones", label: "Funciones" },
-  { href: "/roadmap", label: "Roadmap" },
-  { href: "/novedades", label: "Novedades" },
-  { href: "/contacto", label: "Contacto" },
-];
-
-const APP_LINKS = [
-  { href: "/mi-garaje", label: "Mi Garaje" },
-  { href: "/editor-gpx", label: "Route Studio" },
-  { href: "/mis-rutas", label: "Mis Rutas" },
-  { href: "/perfil", label: "Perfil" },
-  { href: "/mapa-en-vivo", label: "Mapa en tiempo real" },
-];
+import {
+  NAV_APP_LINKS as APP_LINKS,
+  NAV_PUBLIC_LINKS as PUBLIC_LINKS,
+} from "@/lib/site/navigation";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
