@@ -1,5 +1,11 @@
 import type { NavRideCue, NavRideCueSeverity } from "./navride-route/types.ts";
-import { flattenRouteLngLats, lngLatAtProgressM, type LngLat } from "./geo.ts";
+import {
+  flattenRouteLngLats,
+  lngLatAtProgressM,
+  NOTE_OFF_TRACK_METERS,
+  progressMNearestOnPolyline,
+  type LngLat,
+} from "./geo.ts";
 
 export const SRC_ROUTE_NOTES = "route-notes-source";
 export const LYR_ROUTE_NOTES = "route-notes-layer";
@@ -28,12 +34,17 @@ export type RouteNotesFeatureCollection = {
       severity: NavRideCueSeverity;
       text: string;
       title: string;
-      progressM: number;
+      progressM: number | null;
+      noteStatus: string;
     };
     geometry: { type: "Point"; coordinates: LngLat };
   }>;
 };
 
+/**
+ * Marker position = cue.lat/lon when set (user click authority).
+ * Fallback: project progressM onto track (legacy cues without lat/lon).
+ */
 export function buildRouteNotesGeoJSON(
   cues: NavRideCue[],
   segs: RouteNotesSegment[],
@@ -41,7 +52,17 @@ export function buildRouteNotesGeoJSON(
   const line = flattenRouteLngLats(segs);
   const features: RouteNotesFeatureCollection["features"] = [];
   for (const c of cues) {
-    const ll = lngLatAtProgressM(line, c.progressM);
+    let ll: LngLat | null = null;
+    if (
+      typeof c.lat === "number" &&
+      typeof c.lon === "number" &&
+      Number.isFinite(c.lat) &&
+      Number.isFinite(c.lon)
+    ) {
+      ll = [c.lon, c.lat];
+    } else if (c.progressM != null && Number.isFinite(c.progressM)) {
+      ll = lngLatAtProgressM(line, c.progressM);
+    }
     if (!ll) continue;
     features.push({
       type: "Feature",
@@ -51,11 +72,48 @@ export function buildRouteNotesGeoJSON(
         text: c.message,
         title: c.title,
         progressM: c.progressM,
+        noteStatus: c.noteStatus ?? "on_track",
       },
       geometry: { type: "Point", coordinates: ll },
     });
   }
   return { type: "FeatureCollection", features };
+}
+
+/** Reproject notes onto new track geometry; preserve lat/lon. */
+export function reprojectCuesOnTrack(
+  cues: NavRideCue[],
+  segs: RouteNotesSegment[],
+  offTrackM = NOTE_OFF_TRACK_METERS,
+): NavRideCue[] {
+  const line = flattenRouteLngLats(segs);
+  return cues.map((c) => {
+    if (
+      typeof c.lat !== "number" ||
+      typeof c.lon !== "number" ||
+      !Number.isFinite(c.lat) ||
+      !Number.isFinite(c.lon)
+    ) {
+      return c;
+    }
+    const hit = progressMNearestOnPolyline(line, [c.lon, c.lat]);
+    if (!hit || hit.distanceToTrackM > offTrackM) {
+      return {
+        ...c,
+        progressM: null,
+        noteStatus: "off_track" as const,
+        nearestSegmentIndex: hit?.segmentIndex ?? null,
+        projectionFraction: hit?.fraction ?? null,
+      };
+    }
+    return {
+      ...c,
+      progressM: hit.progressM,
+      noteStatus: "on_track" as const,
+      nearestSegmentIndex: hit.segmentIndex,
+      projectionFraction: hit.fraction,
+    };
+  });
 }
 
 /** MapLibre data-driven paint for note circles (~14–18 px diameter). */

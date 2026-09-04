@@ -63,11 +63,29 @@ export function exportGpxWithExtensions(
   const payload = JSON.stringify(routeToJson(route));
   const safeTitle = escapeXml(title || route.name || "Ruta");
   const trkpts = trackPoints.map(formatTrkpt).join("\n");
+  const wpts = (route.cues ?? [])
+    .filter(
+      (c) =>
+        typeof c.lat === "number" &&
+        typeof c.lon === "number" &&
+        Number.isFinite(c.lat) &&
+        Number.isFinite(c.lon),
+    )
+    .map((c) => {
+      const name = escapeXml(c.title || c.message || c.severity);
+      const desc = escapeXml(c.message || "");
+      return `  <wpt lat="${Number(c.lat).toFixed(7)}" lon="${Number(c.lon).toFixed(7)}">
+    <name>${name}</name>
+    <desc>${desc}</desc>
+    <type>navride:cue:${escapeXml(c.severity)}</type>
+  </wpt>`;
+    })
+    .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="NavRide Web Editor" xmlns="http://www.topografix.com/GPX/1/1" xmlns:navride="${NAVRIDE_GPX_NS}">
   <metadata><name>${safeTitle}</name></metadata>
-  <trk>
+${wpts ? wpts + "\n" : ""}  <trk>
     <name>${safeTitle}</name>
     <trkseg>
 ${trkpts}
@@ -140,6 +158,43 @@ export function parseExtensionsXml(xml: string): NavRideRoute | null {
   }
 }
 
+function extractWaypointsAsCues(text: string): import("./types.ts").NavRideCue[] {
+  const cues: import("./types.ts").NavRideCue[] = [];
+  const re = /<wpt\b([^>]*)>([\s\S]*?)<\/wpt>/gi;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(text)) !== null) {
+    const open = m[1] ?? "";
+    const body = m[2] ?? "";
+    const lat = attr(`x ${open}`, "lat");
+    const lon = attr(`x ${open}`, "lon");
+    if (lat == null || lon == null) continue;
+    const nameM = body.match(/<name[^>]*>([\s\S]*?)<\/name>/i);
+    const descM = body.match(/<desc[^>]*>([\s\S]*?)<\/desc>/i);
+    const typeM = body.match(/<type[^>]*>([\s\S]*?)<\/type>/i);
+    const typeRaw = (typeM?.[1] ?? "").trim().toLowerCase();
+    let severity: import("./types.ts").NavRideCueSeverity = "attention";
+    if (typeRaw.includes("danger") || typeRaw.includes("peligro")) severity = "danger";
+    else if (typeRaw.includes("caution") || typeRaw.includes("precauci")) severity = "caution";
+    else if (typeRaw.includes("info")) severity = "info";
+    const title = (nameM?.[1] ?? "").trim() || "Waypoint";
+    const message = (descM?.[1] ?? "").trim() || title;
+    cues.push({
+      cueId: `wpt-${i++}`,
+      title,
+      message,
+      severity,
+      progressM: null,
+      lat,
+      lon,
+      noteStatus: "on_track",
+      category: "note",
+      creator: "gpx-wpt",
+    });
+  }
+  return cues;
+}
+
 /**
  * Parse GPX text into geometry + optional NavRideRoute extensions.
  * Partial / broken files are recoverable when any track/route points exist.
@@ -170,6 +225,23 @@ export function parseGpxFile(text: string): ParseGpxResult {
 
   if (trimmed.includes("navride:") && !extensions) {
     issues.push("Se detectó xmlns navride pero no se pudo parsear la ruta embebida.");
+  }
+
+  // Plain GPX waypoints → user map notes (never turn-by-turn maneuvers).
+  const wptCues = extractWaypointsAsCues(trimmed);
+  if (wptCues.length > 0) {
+    if (!extensions) {
+      extensions = {
+        schemaVersion: 1,
+        routeId: "import-wpt",
+        name: "Importado",
+        geometry: { points: [] },
+        segments: [],
+        cues: wptCues,
+      };
+    } else if (!extensions.cues?.length) {
+      extensions = { ...extensions, cues: wptCues };
+    }
   }
 
   const geometry = extractTrackPoints(trimmed);

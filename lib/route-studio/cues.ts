@@ -30,7 +30,12 @@ function uid(prefix = "cue"): string {
 export type CreateCueInput = {
   message: string;
   severity?: NavRideCueSeverity;
-  progressM?: number;
+  progressM?: number | null;
+  lat?: number | null;
+  lon?: number | null;
+  noteStatus?: "on_track" | "off_track";
+  nearestSegmentIndex?: number | null;
+  projectionFraction?: number | null;
   title?: string;
   category?: string;
   segmentId?: string | null;
@@ -56,7 +61,12 @@ export function createCue(input: CreateCueInput): NavRideCue {
     title,
     message,
     severity,
-    progressM: input.progressM ?? 0,
+    progressM: input.progressM ?? null,
+    lat: input.lat ?? null,
+    lon: input.lon ?? null,
+    noteStatus: input.noteStatus ?? (input.progressM == null ? "off_track" : "on_track"),
+    nearestSegmentIndex: input.nearestSegmentIndex ?? null,
+    projectionFraction: input.projectionFraction ?? null,
     category: input.category ?? "note",
     segmentId: input.segmentId ?? null,
     startProgressM: input.startProgressM ?? null,

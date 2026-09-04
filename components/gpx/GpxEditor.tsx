@@ -69,7 +69,14 @@ import {
   LYR_ROUTE_NOTES,
   buildRouteNotesGeoJSON,
   routeNotesCirclePaint,
+  reprojectCuesOnTrack,
 } from "@/lib/route-studio/route-notes-geojson";
+import {
+  EDITOR_MAX_SNAP_METERS,
+  NOTE_OFF_TRACK_METERS,
+  flattenRouteLngLats,
+  progressMNearestOnPolyline,
+} from "@/lib/route-studio/geo";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type LngLat = [number, number];
@@ -85,7 +92,11 @@ interface Segment {
   routePoints: LngLat[];
   routingFailed?: boolean;
   absurdDetour?: boolean;
+  /** routed = follow paths; freehand = trazado libre; track = imported GPX authority. */
+  pathKind?: "routed" | "freehand" | "track";
 }
+
+type DrawMode = "follow_paths" | "free_draw";
 
 type ImportDialogState = {
   issues: string[];
@@ -256,7 +267,7 @@ function buildRouteJson(
       startIndex: start,
       endIndex: Math.max(start, start + Math.max(0, len - 1)),
       customColor: s.color,
-      pathKind: "routed" as const,
+      pathKind: (s.pathKind ?? "routed") as "routed" | "freehand" | "track" | "unknown",
       snapStatus: s.routingFailed ? ("unmatched" as const) : ("matched" as const),
       cueIds: cues.filter((c) => c.segmentId === s.id).map((c) => c.cueId),
     };
@@ -347,10 +358,17 @@ export default function GpxEditor({
   const [selectedCueId, setSelectedCueId] = useState<string | null>(null);
   const [cueDraftSeverity, setCueDraftSeverity] = useState<NavRideCueSeverity>("attention");
   const [cueDraftMessage, setCueDraftMessage] = useState("");
+  const [placeNotePending, setPlaceNotePending] = useState(false);
+  const [drawMode, setDrawMode] = useState<DrawMode>("follow_paths");
   const [importDialog, setImportDialog] = useState<ImportDialogState | null>(null);
   const gpxFileInputRef = useRef<HTMLInputElement>(null);
   const cuesRef = useRef<NavRideCue[]>([]);
   const pendingLocateReqRef = useRef<string | null>(null);
+  const drawModeRef = useRef<DrawMode>("follow_paths");
+  const placeNotePendingRef = useRef(false);
+  const routeGenerationRef = useRef(0);
+  const cueDraftMessageRef = useRef("");
+  const cueDraftSeverityRef = useRef<NavRideCueSeverity>("attention");
 
   const transportModeRef = useRef<TransportMode>("moto");
   const editorModeRef = useRef<EditorMode>("simple");
@@ -382,6 +400,10 @@ export default function GpxEditor({
   useEffect(() => { mapStyleIdRef.current = mapStyleId; }, [mapStyleId]);
   useEffect(() => { activeWptRef.current = activeWpt; }, [activeWpt]);
   useEffect(() => { insertModeRef.current = insertMode; }, [insertMode]);
+  useEffect(() => { drawModeRef.current = drawMode; }, [drawMode]);
+  useEffect(() => { placeNotePendingRef.current = placeNotePending; }, [placeNotePending]);
+  useEffect(() => { cueDraftMessageRef.current = cueDraftMessage; }, [cueDraftMessage]);
+  useEffect(() => { cueDraftSeverityRef.current = cueDraftSeverity; }, [cueDraftSeverity]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -657,19 +679,79 @@ export default function GpxEditor({
         if (styleChangingRef.current) return;
 
         const { lng, lat } = e.lngLat;
-        let newPt: LngLat = [lng, lat];
+        const clickPt: LngLat = [lng, lat];
+
+        // Place map note at exact click (not mid-route default).
+        if (placeNotePendingRef.current) {
+          const msg = cueDraftMessageRef.current.trim();
+          if (!msg) {
+            setRouteError("Escribe el mensaje de la nota antes de pulsar el mapa.");
+            return;
+          }
+          const line = flattenRouteLngLats(segsRef.current);
+          const hitProj = progressMNearestOnPolyline(line, clickPt);
+          const off =
+            !hitProj || hitProj.distanceToTrackM > NOTE_OFF_TRACK_METERS;
+          const cue = createCue({
+            message: msg,
+            severity: cueDraftSeverityRef.current,
+            lat,
+            lon: lng,
+            progressM: off ? null : hitProj!.progressM,
+            noteStatus: off ? "off_track" : "on_track",
+            nearestSegmentIndex: hitProj?.segmentIndex ?? null,
+            projectionFraction: hitProj?.fraction ?? null,
+            segmentId: activeIdRef.current,
+          });
+          setCues((prev) => [...prev, cue]);
+          setCueDraftMessage("");
+          setPlaceNotePending(false);
+          placeNotePendingRef.current = false;
+          if (off) {
+            setRouteError("Nota fuera del track — se conserva lat/lon sin km de ruta.");
+          } else {
+            setRouteError(null);
+          }
+          return;
+        }
+
         const aId  = activeIdRef.current;
         const curr = segsRef.current;
         const activeSeg0 = curr.find(s => s.id === aId);
-        const mode = transportModeRef.current;
+        // Imported track is geometric authority — do not append routed waypoints silently.
+        if (activeSeg0?.pathKind === "track") {
+          setRouteError(
+            "GPX importado: geometría fija. Usa TRAZADO LIBRE para editar a mano, o crea un segmento nuevo.",
+          );
+          return;
+        }
 
-        // Snap click to road when possible
+        const mode = transportModeRef.current;
+        const follow = drawModeRef.current === "follow_paths";
+        let newPt: LngLat = clickPt;
+
         const prev =
           activeSeg0 && activeSeg0.waypoints.length > 0
             ? activeSeg0.waypoints[activeSeg0.waypoints.length - 1]
             : null;
-        const snapped = await snapClickToRoute(newPt, prev, mode);
-        newPt = snapped.snapped;
+
+        if (follow && prev) {
+          const snapped = await snapClickToRoute(
+            clickPt,
+            prev,
+            mode,
+            EDITOR_MAX_SNAP_METERS,
+          );
+          if (snapped.rejectedFar) {
+            setRouteError(
+              "Este camino no está disponible en los datos de routing actuales (snap > " +
+                EDITOR_MAX_SNAP_METERS +
+                " m). Usa TRAZADO LIBRE o elige un punto más cercano al graph.",
+            );
+            return;
+          }
+          newPt = snapped.snapped;
+        }
 
         // Insert between selected waypoint and next (advanced)
         let withPt: Segment[];
@@ -698,6 +780,7 @@ export default function GpxEditor({
                   ...s,
                   waypoints: [...s.waypoints, newPt],
                   waypointKinds: [...ensureWaypointKinds(s), "via"],
+                  pathKind: follow ? "routed" : "freehand",
                 },
           );
         }
@@ -712,26 +795,62 @@ export default function GpxEditor({
           return;
         }
 
+        // FREE DRAW: waypoints ARE the geometry — no router.
+        if (!follow || activeSeg.pathKind === "freehand") {
+          const freePts = [...activeSeg.waypoints];
+          const gen = ++routeGenerationRef.current;
+          setSegments(prev => {
+            if (gen !== routeGenerationRef.current) return prev;
+            const r = prev.map(s =>
+              s.id === aId
+                ? {
+                    ...s,
+                    routePoints: freePts,
+                    routingFailed: false,
+                    absurdDetour: false,
+                    pathKind: "freehand" as const,
+                  }
+                : s,
+            );
+            segsRef.current = r;
+            syncMap(r);
+            return r;
+          });
+          pushHist(segsRef.current);
+          setRouteError(null);
+          return;
+        }
+
+        const gen = ++routeGenerationRef.current;
         setRouting(true);
         setRouteError(null);
         const routed = await routeForMode(activeSeg.waypoints, mode);
+        if (gen !== routeGenerationRef.current) return; // latest-wins
         if (!routed.ok) {
-          setRouteError(routed.message ?? "Punto inalcanzable — no se dibuja línea recta.");
+          setRouteError(
+            (routed.message ?? "Sin ruta en este control point.") +
+              " No se inventa geometría. Prueba TRAZADO LIBRE.",
+          );
         } else if (routed.absurd && editorModeRef.current === "advanced") {
           setRouteError(routed.message ?? "Desvío absurdo detectado.");
         }
         setSegments(prev => {
+          if (gen !== routeGenerationRef.current) return prev;
           const r = prev.map(s => s.id === aId ? {
             ...s,
-            routePoints: routed.ok ? routed.points : [],
+            routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
             routingFailed: !routed.ok,
             absurdDetour: !!routed.absurd,
+            pathKind: "routed" as const,
           } : s);
           segsRef.current = r;
+          const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+          cuesRef.current = reproj;
+          setCues(reproj);
           syncMap(r);
-          pushHist(r);
           return r;
         });
+        pushHist(segsRef.current);
         setRouting(false);
       });
 
@@ -777,20 +896,54 @@ export default function GpxEditor({
 
         setRouting(true);
         setRouteError(null);
+        const pathKind = seg.pathKind ?? "routed";
+        if (pathKind === "track") {
+          setRouteError("GPX importado: geometría de track fija — no se re-enruta al mover waypoints.");
+          pushHist(segsRef.current);
+          setRouting(false);
+          return;
+        }
+        if (pathKind === "freehand") {
+          const freePts = [...seg.waypoints];
+          setSegments(prev => {
+            const r = prev.map(s =>
+              s.id === di.segId
+                ? { ...s, routePoints: freePts, routingFailed: false, absurdDetour: false }
+                : s,
+            );
+            segsRef.current = r;
+            const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+            cuesRef.current = reproj;
+            setCues(reproj);
+            syncMap(r);
+            pushHist(r);
+            return r;
+          });
+          setRouting(false);
+          return;
+        }
+        const gen = ++routeGenerationRef.current;
         const routed = await routeForMode(seg.waypoints, transportModeRef.current);
+        if (gen !== routeGenerationRef.current) return;
         if (!routed.ok) {
-          setRouteError(routed.message ?? "Punto inalcanzable — no se dibuja línea recta.");
+          setRouteError(
+            (routed.message ?? "Punto inalcanzable — no se dibuja línea recta."),
+          );
         } else if (routed.absurd && editorModeRef.current === "advanced") {
           setRouteError(routed.message ?? "Desvío absurdo detectado.");
         }
         setSegments(prev => {
+          if (gen !== routeGenerationRef.current) return prev;
           const r = prev.map(s => s.id === di.segId ? {
             ...s,
-            routePoints: routed.ok ? routed.points : [],
+            routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
             routingFailed: !routed.ok,
             absurdDetour: !!routed.absurd,
           } : s);
           segsRef.current = r;
+          const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+          cuesRef.current = reproj;
+          setCues(reproj);
           syncMap(r);
           pushHist(r);
           return r;
@@ -861,32 +1014,46 @@ export default function GpxEditor({
     return () => { cancelled = true; };
   }, [mapStyleId]);
 
-  // Re-route all segments when transport mode changes (advanced capability; also useful always)
+  // Re-route only "routed" segments — never rewrite imported track / freehand.
   const rerouteAll = useCallback(async (mode: TransportMode) => {
     const curr = segsRef.current;
-    const need = curr.filter(s => s.waypoints.length >= 2);
+    const need = curr.filter(
+      (s) =>
+        s.waypoints.length >= 2 &&
+        (s.pathKind ?? "routed") === "routed",
+    );
     if (need.length === 0) return;
+    const gen = ++routeGenerationRef.current;
     setRouting(true);
     setRouteError(null);
     const next = [...curr];
     for (let i = 0; i < next.length; i++) {
       const s = next[i];
       if (s.waypoints.length < 2) continue;
+      if ((s.pathKind ?? "routed") !== "routed") continue;
       const routed = await routeForMode(s.waypoints, mode);
+      if (gen !== routeGenerationRef.current) return;
       next[i] = {
         ...s,
-        routePoints: routed.ok ? routed.points : [],
+        routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
         routingFailed: !routed.ok,
         absurdDetour: !!routed.absurd,
       };
       if (!routed.ok) {
-        setRouteError(routed.message ?? "Punto inalcanzable en el nuevo modo.");
+        setRouteError(
+          (routed.message ?? "Punto inalcanzable en el nuevo modo.") +
+            " Sin geometría inventada.",
+        );
       } else if (routed.absurd && editorModeRef.current === "advanced") {
         setRouteError(routed.message ?? "Desvío absurdo tras cambiar modo.");
       }
     }
+    if (gen !== routeGenerationRef.current) return;
     segsRef.current = next;
     setSegments(next);
+    const reproj = reprojectCuesOnTrack(cuesRef.current, next);
+    cuesRef.current = reproj;
+    setCues(reproj);
     syncMap(next);
     pushHist(next);
     setRouting(false);
@@ -895,7 +1062,6 @@ export default function GpxEditor({
   const handleTransportChange = useCallback((mode: TransportMode) => {
     setTransportMode(mode);
     transportModeRef.current = mode;
-    // Re-ruta siempre al cambiar modo (moto/coche siguen siendo modos distintos)
     void rerouteAll(mode);
   }, [rerouteAll]);
 
@@ -1035,17 +1201,40 @@ export default function GpxEditor({
 
     const seg = upd.find(s => s.id === segId);
     if (seg && seg.waypoints.length >= 2) {
+      const pk = seg.pathKind ?? "routed";
+      if (pk === "track") {
+        syncMap(upd, null);
+        pushHist(upd);
+        return;
+      }
+      if (pk === "freehand") {
+        const r = upd.map(s =>
+          s.id === segId
+            ? { ...s, routePoints: [...s.waypoints], routingFailed: false }
+            : s,
+        );
+        segsRef.current = r;
+        setSegments(r);
+        syncMap(r, null);
+        pushHist(r);
+        return;
+      }
       setRouting(true);
+      const gen = ++routeGenerationRef.current;
       const routed = await routeForMode(seg.waypoints, transportModeRef.current);
+      if (gen !== routeGenerationRef.current) return;
       if (!routed.ok) setRouteError(routed.message ?? "Punto inalcanzable.");
       const r = upd.map(s => s.id === segId ? {
         ...s,
-        routePoints: routed.ok ? routed.points : [],
+        routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
         routingFailed: !routed.ok,
         absurdDetour: !!routed.absurd,
       } : s);
       segsRef.current = r;
       setSegments(r);
+      const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+      cuesRef.current = reproj;
+      setCues(reproj);
       syncMap(r, null);
       pushHist(r);
       setRouting(false);
@@ -1077,11 +1266,32 @@ export default function GpxEditor({
 
     const seg = upd.find(s => s.id === segId)!;
     if (seg.waypoints.length >= 2) {
+      const pk = seg.pathKind ?? "routed";
+      if (pk === "freehand") {
+        const r = upd.map(s =>
+          s.id === segId
+            ? { ...s, routePoints: [...s.waypoints], routingFailed: false }
+            : s,
+        );
+        segsRef.current = r;
+        setSegments(r);
+        syncMap(r);
+        pushHist(r);
+        return;
+      }
+      if (pk === "track") {
+        setSegments(upd);
+        syncMap(upd);
+        pushHist(upd);
+        return;
+      }
       setRouting(true);
+      const gen = ++routeGenerationRef.current;
       const routed = await routeForMode(seg.waypoints, transportModeRef.current);
+      if (gen !== routeGenerationRef.current) return;
       const r = upd.map(s => s.id === segId ? {
         ...s,
-        routePoints: routed.ok ? routed.points : [],
+        routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
         routingFailed: !routed.ok,
         absurdDetour: !!routed.absurd,
       } : s);
@@ -1272,6 +1482,7 @@ export default function GpxEditor({
       waypointKinds,
       routePoints: pts.length >= 2 ? pts : [],
       routingFailed: pts.length < 2,
+      pathKind: "track",
     };
     const next = [seg];
     segsRef.current = next;
@@ -1328,16 +1539,10 @@ export default function GpxEditor({
   const handleAddCue = useCallback(() => {
     const msg = cueDraftMessage.trim();
     if (!msg) return;
-    const progressM = Math.max(0, totalKm(segsRef.current) * 1000 * 0.5);
-    const cue = createCue({
-      message: msg,
-      severity: cueDraftSeverity,
-      progressM,
-      segmentId: activeIdRef.current,
-    });
-    setCues((prev) => [...prev, cue]);
-    setCueDraftMessage("");
-  }, [cueDraftMessage, cueDraftSeverity]);
+    setPlaceNotePending(true);
+    placeNotePendingRef.current = true;
+    setRouteError("Pulsa en el mapa para colocar la nota exactamente ahí.");
+  }, [cueDraftMessage]);
 
   const handleDeleteCue = useCallback((cueId: string) => {
     setCues((prev) => prev.filter((c) => c.cueId !== cueId));
@@ -1690,10 +1895,39 @@ export default function GpxEditor({
             </button>
           ))}
         </div>
-        {(transportMode === "moto" || transportMode === "car") && (
+        <label className="text-xs text-white/40 uppercase tracking-widest mt-1">Trazado</label>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            onClick={() => setDrawMode("follow_paths")}
+            className={`rounded-lg border px-2 py-2 text-xs ${
+              drawMode === "follow_paths"
+                ? "border-[#FF5A1F]/50 bg-[#FF5A1F]/10 text-white"
+                : "border-white/10 text-white/50"
+            }`}
+          >
+            Seguir caminos
+          </button>
+          <button
+            type="button"
+            onClick={() => setDrawMode("free_draw")}
+            className={`rounded-lg border px-2 py-2 text-xs ${
+              drawMode === "free_draw"
+                ? "border-[#FF5A1F]/50 bg-[#FF5A1F]/10 text-white"
+                : "border-white/10 text-white/50"
+            }`}
+          >
+            Trazado libre
+          </button>
+        </div>
+        <p className="text-[10px] text-white/35 leading-snug">
+          {drawMode === "follow_paths"
+            ? `Routing entre control points (snap ≤ ${EDITOR_MAX_SNAP_METERS} m). Sin ruta → error honesto, no rodeo inventado.`
+            : "Sin routing: los puntos son la geometría exacta (útil si OSM/graph no tiene el camino)."}
+        </p>
+        {(transportMode === "moto" || transportMode === "car") && drawMode === "follow_paths" && (
           <p className="text-[10px] text-white/35 leading-snug">
-            Moto y coche usan el perfil OSRM <span className="text-white/50">driving</span> por ahora;
-            se mantienen modos separados para un perfil moto futuro. Cambiar modo re-enruta.
+            Moto/coche usan perfil OSRM driving en web; la app usa Valhalla local. Cambiar modo solo re-enruta segmentos &quot;routed&quot; (no GPX importado).
           </p>
         )}
       </div>
@@ -1970,7 +2204,14 @@ export default function GpxEditor({
                       {c.message}
                     </p>
                     <p className="text-white/25 text-[10px]">
-                      @{Math.round(c.progressM)} m
+                      {c.progressM != null
+                        ? `@${Math.round(c.progressM)} m`
+                        : c.noteStatus === "off_track"
+                          ? "fuera del track"
+                          : "—"}
+                      {typeof c.lat === "number" && typeof c.lon === "number"
+                        ? ` · ${c.lat.toFixed(5)},${c.lon.toFixed(5)}`
+                        : ""}
                     </p>
                     {selectedCueId === c.cueId && (
                       <select
@@ -2028,9 +2269,15 @@ export default function GpxEditor({
                 type="button"
                 onClick={handleAddCue}
                 disabled={!cueDraftMessage.trim()}
-                className="rounded-lg border border-[#FF5A1F]/40 text-[#FF5A1F] text-xs py-1.5 disabled:opacity-30"
+                className={`rounded-lg border text-xs py-1.5 disabled:opacity-30 ${
+                  placeNotePending
+                    ? "border-yellow-400/60 text-yellow-300"
+                    : "border-[#FF5A1F]/40 text-[#FF5A1F]"
+                }`}
               >
-                Añadir cue
+                {placeNotePending
+                  ? "Pulsa el mapa para colocar…"
+                  : "Añadir nota (luego pulsa el mapa)"}
               </button>
             </div>
           </div>
@@ -2067,7 +2314,7 @@ export default function GpxEditor({
       {/* Note */}
       <p className="text-xs text-white/25 flex items-start gap-1.5">
         <MapPin size={11} className="shrink-0 mt-0.5" />
-        Snap OSRM · Satélite ESRI + labels vector OpenFreeMap · {SATELLITE_ATTRIBUTION.split("|")[0]}
+        Snap ≤{EDITOR_MAX_SNAP_METERS} m · Seguir caminos / Trazado libre · Satélite ESRI + labels vector OpenFreeMap · {SATELLITE_ATTRIBUTION.split("|")[0]}
       </p>
 
       {/* Import GPX (advanced capability) */}

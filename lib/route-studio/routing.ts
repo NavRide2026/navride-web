@@ -1,6 +1,7 @@
-import { haversineKm } from "./geo";
+import { haversineKm } from "./geo.ts";
 
 export type LngLat = [number, number];
+
 
 export type TransportMode = "walk" | "bike" | "moto" | "car";
 
@@ -111,19 +112,26 @@ export async function routeWaypoints(
   }
 }
 
-/** Snap suave: usa el primer punto de ruta OSRM entre origen y destino cercano. */
+/** Snap suave con radio máximo: no saltar a carretera lejana.
+ * Si el endpoint OSRM está a más de maxSnapM del click → conservar click (caller decide).
+ */
 export async function snapClickToRoute(
   click: LngLat,
   prev: LngLat | null,
   mode: TransportMode,
-): Promise<{ snapped: LngLat; routeSegment: LngLat[] | null }> {
-  if (!prev) return { snapped: click, routeSegment: null };
+  maxSnapM = 25,
+): Promise<{ snapped: LngLat; routeSegment: LngLat[] | null; rejectedFar: boolean }> {
+  if (!prev) return { snapped: click, routeSegment: null, rejectedFar: false };
   const result = await routeWaypoints([prev, click], mode);
   if (!result.ok || result.points.length < 2) {
-    return { snapped: click, routeSegment: null };
+    return { snapped: click, routeSegment: null, rejectedFar: false };
   }
   const last = result.points[result.points.length - 1];
-  return { snapped: last, routeSegment: result.points };
+  const distM = haversineKm(click, last) * 1000;
+  if (distM > maxSnapM) {
+    return { snapped: click, routeSegment: null, rejectedFar: true };
+  }
+  return { snapped: last, routeSegment: result.points, rejectedFar: false };
 }
 
 export function detectAbsurdDetour(

@@ -82,12 +82,22 @@ export interface NavRideManeuver {
   confidence?: number;
 }
 
+/** User map note status — distinct from turn-by-turn maneuvers. */
+export type NavRideNoteStatus = "on_track" | "off_track";
+
 export interface NavRideCue {
   cueId: string;
   title: string;
   message: string;
   severity: NavRideCueSeverity;
-  progressM: number;
+  /** Along-track offset (m). Null when off-track / unknown. */
+  progressM: number | null;
+  /** Exact map click location — authority for marker placement. */
+  lat?: number | null;
+  lon?: number | null;
+  noteStatus?: NavRideNoteStatus;
+  nearestSegmentIndex?: number | null;
+  projectionFraction?: number | null;
   category?: string;
   segmentId?: string | null;
   startProgressM?: number | null;
@@ -358,7 +368,15 @@ export function parseNavRideRoute(raw: unknown): NavRideRoute | null {
       message: asStr(c.message),
       category: asStr(c.category, "note"),
       severity: parseCueSeverity(c.severity),
-      progressM: asNum(c.progressM),
+      progressM: c.progressM == null ? null : asNum(c.progressM),
+      lat: c.lat == null ? null : asNum(c.lat),
+      lon: c.lon == null ? null : asNum(c.lon),
+      noteStatus:
+        c.noteStatus === "off_track" ? ("off_track" as const) : ("on_track" as const),
+      nearestSegmentIndex:
+        c.nearestSegmentIndex == null ? null : asNum(c.nearestSegmentIndex),
+      projectionFraction:
+        c.projectionFraction == null ? null : asNum(c.projectionFraction),
       segmentId: typeof c.segmentId === "string" ? c.segmentId : null,
       startProgressM: c.startProgressM == null ? null : asNum(c.startProgressM),
       endProgressM: c.endProgressM == null ? null : asNum(c.endProgressM),
