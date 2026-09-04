@@ -81,6 +81,7 @@ export const PUBLIC_ROUTES = [
   "/contacto",
   "/soporte",
   "/login",
+  "/garage",
   "/mi-garaje",
   "/editor-gpx",
   "/perfil",

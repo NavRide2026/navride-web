@@ -4,7 +4,7 @@ export type NavLink = { href: string; label: string };
 export const NAV_PUBLIC_LINKS: NavLink[] = [
   { href: "/producto", label: "Producto" },
   { href: "/funciones", label: "Funciones" },
-  { href: "/garage", label: "Garage" },
+  { href: "/garage", label: "Diseño y personalización" },
   { href: "/planes", label: "Planes" },
   { href: "/roadmap", label: "Roadmap" },
   { href: "/novedades", label: "Novedades" },
