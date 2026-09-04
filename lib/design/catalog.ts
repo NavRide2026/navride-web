@@ -9,28 +9,19 @@ export type DesignCategory = {
 };
 
 export const DESIGN_CATEGORIES: DesignCategory[] = [
-  // Iconify trata multi-palabra como AND sobre el nombre del icono.
-  // Queries de 1 término indexable → resultados reales (sin stock inventado).
-  { id: "themes", label: "Temas", query: "palette" },
-  { id: "pucks", label: "Pucks", query: "location" },
-  { id: "speedometers", label: "Velocímetros", query: "speedometer" },
-  {
-    id: "turn_by_turn",
-    label: "Indicaciones giro a giro",
-    query: "arrow",
-  },
-  { id: "mode_selector", label: "Selector de modo", query: "toggle" },
-  { id: "hud", label: "HUD", query: "dashboard" },
+  // Iconify = ICON provider only. Complex skins need .navrideskin on device.
+  { id: "pucks", label: "Pucks de ubicación", query: "navigation" },
+  { id: "icons", label: "Iconos", query: "icon" },
   { id: "map_controls", label: "Controles del mapa", query: "layers" },
-  { id: "banners_panels", label: "Banners y paneles", query: "panel" },
-  { id: "app_bars", label: "App Bars", query: "toolbar" },
-  { id: "menus", label: "Menús", query: "menu" },
   { id: "compasses", label: "Brújulas", query: "compass" },
-  {
-    id: "route_gpx",
-    label: "Estilos de ruta / GPX",
-    query: "route",
-  },
+  { id: "turn_by_turn", label: "Indicaciones", query: "arrow" },
+  { id: "speedometers", label: "Velocímetros", query: "" },
+  { id: "hud", label: "HUD", query: "" },
+  { id: "mode_selector", label: "Selector de modo", query: "toggle" },
+  { id: "banners_panels", label: "Banners y paneles", query: "panel" },
+  { id: "app_bars", label: "App Bars", query: "" },
+  { id: "menus", label: "Menús", query: "menu" },
+  { id: "themes", label: "Temas", query: "" },
   { id: "packs", label: "Packs", query: "apps" },
 ];
 
@@ -58,7 +49,7 @@ export function getActiveDesignSources(): DesignSource[] {
       name: "Iconify",
       homepage: "https://iconify.design",
       description:
-        "API pública oficial. Más de 200 colecciones open source con licencia por colección.",
+        "Proveedor de ICONOS (API pública). No instala HUD/velocímetros/temas en el teléfono — eso requiere .navrideskin en la app.",
       license: "Por colección (MIT, Apache-2.0, CC BY…)",
     },
   ];

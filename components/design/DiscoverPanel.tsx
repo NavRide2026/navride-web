@@ -35,13 +35,30 @@ export default function DiscoverPanel({ library }: { library: DesignLibrary }) {
     DESIGN_CATEGORIES.find((c) => c.id === categoryId) ?? DESIGN_CATEGORIES[0];
   const freeText = normalizeSearchQuery(debouncedQuery);
   const effectiveQuery = freeText || category.query;
+  const complexEmpty =
+    !freeText &&
+    (category.id === "speedometers" ||
+      category.id === "hud" ||
+      category.id === "themes" ||
+      category.id === "app_bars");
 
   /** Sin estado de carga propio: la petición pendiente es la que aún no se ha resuelto. */
-  const loading = loadedQuery !== effectiveQuery;
+  const loading = !complexEmpty && loadedQuery !== effectiveQuery;
 
   useEffect(() => {
+    if (complexEmpty) {
+      setResults([]);
+      setSearchError(null);
+      setLoadedQuery(effectiveQuery || category.id);
+      return;
+    }
+    if (!effectiveQuery.trim()) {
+      setResults([]);
+      setLoadedQuery("");
+      return;
+    }
     const controller = new AbortController();
-    searchIcons(effectiveQuery, { limit: 32, signal: controller.signal })
+    searchIcons(effectiveQuery, { limit: 64, signal: controller.signal })
       .then((icons) => {
         setResults(icons);
         setSearchError(null);
@@ -58,7 +75,7 @@ export default function DiscoverPanel({ library }: { library: DesignLibrary }) {
         setLoadedQuery(effectiveQuery);
       });
     return () => controller.abort();
-  }, [effectiveQuery]);
+  }, [effectiveQuery, complexEmpty, category.id]);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -71,8 +88,8 @@ export default function DiscoverPanel({ library }: { library: DesignLibrary }) {
           <input
             value={rawQuery}
             onChange={(e) => setRawQuery(e.target.value)}
-            placeholder="Busca en español: flecha, moto, brújula, velocímetro…"
-            aria-label="Buscar iconos"
+            placeholder="Buscar iconos o packs..."
+            aria-label="Buscar iconos o packs"
             className="w-full rounded-xl border border-zinc-800 bg-zinc-950 py-2.5 pr-4 pl-9 text-sm text-zinc-100 outline-none focus:border-orange-500"
           />
         </div>
@@ -119,11 +136,17 @@ export default function DiscoverPanel({ library }: { library: DesignLibrary }) {
           )}
           {!loading && results.length === 0 && !searchError && (
             <p className="text-sm text-zinc-500">
-              {category.id === "packs"
-                ? "No hay packs compatibles disponibles actualmente. Explora otras categorías para componentes Iconify."
-                : `Sin resultados para «${effectiveQuery}».`}
+              {complexEmpty
+                ? "Sin diseños compatibles. Un icono suelto no es HUD, velocímetro ni tema. La instalación en el teléfono requiere .navrideskin."
+                : category.id === "packs"
+                  ? "No hay packs compatibles disponibles actualmente. Explora otras categorías para iconos Iconify."
+                  : `Sin resultados para «${effectiveQuery || category.label}».`}
             </p>
           )}
+          <p className="mt-2 text-[11px] text-zinc-600">
+            Iconify en web: buscar, previsualizar y guardar en biblioteca. No
+            instala componentes en el teléfono.
+          </p>
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
             {results.map((icon) => {
               const saved = library.savedAssetIds.has(`iconify:${icon.id}`);
