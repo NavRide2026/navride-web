@@ -1,12 +1,14 @@
 import type { LngLat, TransportMode } from "./routing";
 import { haversineKm } from "./geo";
 
-export type RouteHealth = "GOOD" | "REVIEW" | "INVALID";
+export type RouteHealth = "GOOD" | "REVIEW" | "INVALID" | "DRAFT";
 
 export type RouteHealthReport = {
   health: RouteHealth;
   issues: string[];
   warnings: string[];
+  /** User-facing copy — never red for incomplete draft. */
+  userMessage?: string;
 };
 
 export type SegmentHealthInput = {
@@ -19,9 +21,23 @@ export type SegmentHealthInput = {
 export function analyzeRouteHealth(segs: SegmentHealthInput[]): RouteHealthReport {
   const issues: string[] = [];
   const warnings: string[] = [];
+  const totalWpts = segs.reduce((a, s) => a + s.waypoints.length, 0);
 
+  if (totalWpts === 0) {
+    return {
+      health: "DRAFT",
+      issues: [],
+      warnings: [],
+      userMessage: "Toca el mapa para empezar",
+    };
+  }
   if (segs.every((s) => s.waypoints.length < 2 && s.routePoints.length < 2)) {
-    return { health: "INVALID", issues: ["La ruta no tiene suficientes puntos."], warnings: [] };
+    return {
+      health: "DRAFT",
+      issues: [],
+      warnings: [],
+      userMessage: "Añade otro punto para crear la ruta",
+    };
   }
 
   for (const seg of segs) {

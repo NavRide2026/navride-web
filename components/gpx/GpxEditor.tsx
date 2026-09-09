@@ -14,14 +14,43 @@ import {
   copyRouteLink,
 } from "@/lib/gpx/saveRouteToCloud";
 import { RouteDoctorPanel } from "@/components/route-studio/capability-panels";
+import {
+  CompatibilityPromptCard,
+  CompatibilityAltPreview,
+  CompatibilityDataGapCard,
+  RouteCompatibilityReview,
+  type CompatPrompt,
+} from "@/components/gpx/RouteCompatibilityPanel";
+import { fetchWaysAround, fetchWaysAlongRoute } from "@/lib/route-studio/route-compatibility-overpass";
+import {
+  compatibleWaysOnly,
+  routeOnOsmNetwork,
+  snapClickToOsmNetwork,
+} from "@/lib/route-studio/editor-osm-network";
+import { rankWaysNearClick } from "@/lib/route-studio/route-compatibility-snap";
+import {
+  auditRouteGeometry,
+  auditToGeoJSON,
+  mergeTailAudit,
+  tailPolyline,
+  type CompatibilityAudit,
+  type CompatibilityIssue,
+} from "@/lib/route-studio/route-compatibility-audit";
 import { TrackColorPicker } from "@/components/route-studio/track-color-picker";
 import {
-  routeWaypoints,
-  snapClickToRoute,
-  detectAbsurdDetour,
   TRANSPORT_MODES,
   type TransportMode,
 } from "@/lib/route-studio/routing";
+import {
+  ROUTE_SEGMENT_MODES,
+  DEFAULT_ROUTE_SEGMENT_MODE,
+  parseRouteSegmentMode,
+  labelForSegmentMode,
+  pathKindForSegmentMode,
+  isRoutedSegmentMode,
+  geometryFingerprint,
+  type RouteSegmentMode,
+} from "@/lib/route-studio/segment-routing-mode";
 import { analyzeRouteHealth } from "@/lib/route-studio/route-health";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/route-studio/autosave";
 import { type EditorMode } from "@/lib/route-studio/mode-capabilities";
@@ -44,6 +73,7 @@ import {
 import {
   exportGpxWithExtensions,
   parseGpxFile,
+  type RouteCapsule,
 } from "@/lib/route-studio/navride-route/gpx-codec";
 import {
   createEmptyRoute,
@@ -72,7 +102,6 @@ import {
   reprojectCuesOnTrack,
 } from "@/lib/route-studio/route-notes-geojson";
 import {
-  EDITOR_MAX_SNAP_METERS,
   NOTE_OFF_TRACK_METERS,
   flattenRouteLngLats,
   progressMNearestOnPolyline,
@@ -94,14 +123,15 @@ interface Segment {
   absurdDetour?: boolean;
   /** routed = follow paths; freehand = trazado libre; track = imported GPX authority. */
   pathKind?: "routed" | "freehand" | "track";
+  /** Canonical segment mode (FOLLOW_ROAD | FOLLOW_TRAIL | MANUAL_STRAIGHT). Default FOLLOW_ROAD. */
+  routeSegmentMode?: RouteSegmentMode;
 }
-
-type DrawMode = "follow_paths" | "free_draw";
 
 type ImportDialogState = {
   issues: string[];
   geometry: { lat: number; lon: number; ele?: number | null }[];
   extensions: NavRideRoute | null;
+  capsule: RouteCapsule | null;
   fileName: string;
 };
 
@@ -125,6 +155,9 @@ const LYR_LINES  = "nav-lyr-lines";
 const LYR_POINTS = "nav-lyr-points";
 const LYR_USER   = "nav-user-dot";
 const LYR_USER_RING = "nav-user-ring";
+const SRC_COMPAT = "nav-compat";
+const LYR_COMPAT = "nav-lyr-compat";
+const LYR_COMPAT_MARK = "nav-lyr-compat-mark";
 // Route notes use SRC_ROUTE_NOTES / LYR_ROUTE_NOTES from route-notes-geojson.
 
 const COLORS = [
@@ -166,20 +199,24 @@ function totalKm(segs: Segment[]): number {
 async function routeForMode(
   waypoints: LngLat[],
   mode: TransportMode,
+  segmentMode: RouteSegmentMode = DEFAULT_ROUTE_SEGMENT_MODE,
 ): Promise<{ points: LngLat[]; ok: boolean; message?: string; absurd?: boolean }> {
-  const result = await routeWaypoints(waypoints, mode);
-  if (!result.ok) {
-    return { points: [], ok: false, message: result.message };
+  if (segmentMode === "MANUAL_STRAIGHT") {
+    return { points: [...waypoints], ok: true };
   }
-  const absurd = detectAbsurdDetour(waypoints, result.points);
-  return {
-    points: result.points,
-    ok: true,
-    absurd,
-    message: absurd
-      ? "Desvío absurdo detectado — revisa el waypoint o el modo de transporte."
-      : undefined,
-  };
+  if (waypoints.length < 2) {
+    return { points: [...waypoints], ok: true };
+  }
+  const fetched = await fetchWaysAlongRoute(waypoints);
+  const ways = fetched.ways;
+  const out: LngLat[] = [];
+  for (let i = 1; i < waypoints.length; i++) {
+    const seg = routeOnOsmNetwork(ways, waypoints[i - 1], waypoints[i], mode);
+    if (out.length === 0) out.push(...seg);
+    else out.push(...seg.slice(1));
+  }
+  const pts = out.length >= 2 ? out : [...waypoints];
+  return { points: pts, ok: true };
 }
 
 function buildGeoJSON(segs: Segment[], activeWpt: { segId: string; idx: number } | null) {
@@ -267,7 +304,20 @@ function buildRouteJson(
       startIndex: start,
       endIndex: Math.max(start, start + Math.max(0, len - 1)),
       customColor: s.color,
-      pathKind: (s.pathKind ?? "routed") as "routed" | "freehand" | "track" | "unknown",
+      pathKind: (s.pathKind ?? pathKindForSegmentMode(
+        parseRouteSegmentMode(s.routeSegmentMode),
+      )) as "routed" | "freehand" | "track" | "unknown",
+      routeSegmentMode: parseRouteSegmentMode(
+        s.routeSegmentMode ??
+          (s.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+      ),
+      geometrySource:
+        parseRouteSegmentMode(s.routeSegmentMode) === "MANUAL_STRAIGHT" ||
+        s.pathKind === "freehand"
+          ? ("manual" as const)
+          : s.pathKind === "track"
+            ? ("track" as const)
+            : ("routed" as const),
       snapStatus: s.routingFailed ? ("unmatched" as const) : ("matched" as const),
       cueIds: cues.filter((c) => c.segmentId === s.id).map((c) => c.cueId),
     };
@@ -291,13 +341,18 @@ function buildRouteJson(
   });
 }
 
-function exportGpx(segs: Segment[], title: string, cues: NavRideCue[] = []): string {
+function exportGpx(
+  segs: Segment[],
+  title: string,
+  cues: NavRideCue[] = [],
+  capsule?: RouteCapsule | null,
+): string {
   const pts = segs.flatMap((s) =>
     s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints : [],
   );
   const trackPoints = pts.map(([lon, lat]) => ({ lat, lon }));
   const routeJson = buildRouteJson(segs, title, cues, pts);
-  return exportGpxWithExtensions(routeJson, title, trackPoints);
+  return exportGpxWithExtensions(routeJson, title, trackPoints, capsule);
 }
 
 function mkSeg(color = COLORS[0].value): Segment {
@@ -308,6 +363,8 @@ function mkSeg(color = COLORS[0].value): Segment {
     waypoints: [],
     waypointKinds: [],
     routePoints: [],
+    routeSegmentMode: DEFAULT_ROUTE_SEGMENT_MODE,
+    pathKind: "routed",
   };
 }
 
@@ -359,12 +416,33 @@ export default function GpxEditor({
   const [cueDraftSeverity, setCueDraftSeverity] = useState<NavRideCueSeverity>("attention");
   const [cueDraftMessage, setCueDraftMessage] = useState("");
   const [placeNotePending, setPlaceNotePending] = useState(false);
-  const [drawMode, setDrawMode] = useState<DrawMode>("follow_paths");
+  const [drawMode, setDrawMode] = useState<RouteSegmentMode>(DEFAULT_ROUTE_SEGMENT_MODE);
   const [importDialog, setImportDialog] = useState<ImportDialogState | null>(null);
+  const [compatPrompt, setCompatPrompt] = useState<CompatPrompt | null>(null);
+  const [compatAudit, setCompatAudit] = useState<CompatibilityAudit | null>(null);
+  const [compatIssue, setCompatIssue] = useState<CompatibilityIssue | null>(null);
+  const [compatLoading, setCompatLoading] = useState(false);
+  const [compatFindingAlt, setCompatFindingAlt] = useState(false);
+  const [compatAltLine, setCompatAltLine] = useState<LngLat[] | null>(null);
+  const [compatAltVia, setCompatAltVia] = useState<LngLat | null>(null);
+  const [compatDataGap, setCompatDataGap] = useState<LngLat | null>(null);
+  const [keptCompatIds, setKeptCompatIds] = useState<Set<string>>(() => new Set());
+  const setCompatPromptRef = useRef(setCompatPrompt);
+  setCompatPromptRef.current = setCompatPrompt;
+  const compatPlacePointRef = useRef<(pt: LngLat) => Promise<void>>(async () => {});
+  const scheduleLiveAuditRef = useRef<() => void>(() => {});
+  const compatAuditRef = useRef<CompatibilityAudit | null>(null);
+  compatAuditRef.current = compatAudit;
+  const keptCompatIdsRef = useRef(keptCompatIds);
+  keptCompatIdsRef.current = keptCompatIds;
+  const setCompatIssueRef = useRef(setCompatIssue);
+  setCompatIssueRef.current = setCompatIssue;
   const gpxFileInputRef = useRef<HTMLInputElement>(null);
   const cuesRef = useRef<NavRideCue[]>([]);
+  /** Preserved NavRide Route Capsule across open→edit→save (never silently drop). */
+  const capsuleRef = useRef<RouteCapsule | null>(null);
   const pendingLocateReqRef = useRef<string | null>(null);
-  const drawModeRef = useRef<DrawMode>("follow_paths");
+  const drawModeRef = useRef<RouteSegmentMode>(DEFAULT_ROUTE_SEGMENT_MODE);
   const placeNotePendingRef = useRef(false);
   const routeGenerationRef = useRef(0);
   const cueDraftMessageRef = useRef("");
@@ -430,6 +508,19 @@ export default function GpxEditor({
     } catch { /* style change in progress */ }
   }, []);
 
+  const syncCompatLayers = useCallback((
+    audit: CompatibilityAudit | null = compatAuditRef.current,
+    alt: LngLat[] | null = null,
+  ) => {
+    const map = mapRef.current;
+    if (!map || !mapReady.current) return;
+    try {
+      map.getSource(SRC_COMPAT)?.setData(
+        auditToGeoJSON(audit, keptCompatIdsRef.current, alt),
+      );
+    } catch { /* */ }
+  }, []);
+
   const applyTrackPaint = useCallback(() => {
     const map = mapRef.current;
     if (!map || !mapReady.current) return;
@@ -454,6 +545,9 @@ export default function GpxEditor({
   }, []);
 
   useEffect(() => { syncMap(segments); }, [segments, syncMap, activeWpt]);
+  useEffect(() => {
+    syncCompatLayers(compatAudit, compatAltLine);
+  }, [compatAudit, compatAltLine, keptCompatIds, syncCompatLayers]);
   useEffect(() => { applyTrackPaint(); }, [trackWidth, trackOpacity, mapStyleId, applyTrackPaint]);
 
   const syncUserMarker = useCallback((ll: LngLat | null) => {
@@ -502,6 +596,130 @@ export default function GpxEditor({
     setHistLen(h.length);
   }, []);
 
+  const commitEditorPoint = useCallback(async (newPt: LngLat) => {
+    const aId = activeIdRef.current;
+    const curr = segsRef.current;
+    const activeSeg0 = curr.find((s) => s.id === aId);
+    const segMode =
+      activeSeg0?.routeSegmentMode ??
+      drawModeRef.current ??
+      DEFAULT_ROUTE_SEGMENT_MODE;
+    const follow = isRoutedSegmentMode(segMode);
+    const mode = transportModeRef.current;
+
+    let withPt: Segment[];
+    if (
+      insertModeRef.current &&
+      editorModeRef.current === "advanced" &&
+      activeWptRef.current &&
+      activeWptRef.current.segId === aId
+    ) {
+      const idx = activeWptRef.current.idx;
+      withPt = curr.map((s) => {
+        if (s.id !== aId) return s;
+        const wpts = [...s.waypoints];
+        const kinds = ensureWaypointKinds(s);
+        wpts.splice(idx + 1, 0, newPt);
+        kinds.splice(idx + 1, 0, "via");
+        return { ...s, waypoints: wpts, waypointKinds: kinds };
+      });
+      setInsertMode(false);
+      insertModeRef.current = false;
+    } else {
+      withPt = curr.map((s) =>
+        s.id !== aId
+          ? s
+          : {
+              ...s,
+              waypoints: [...s.waypoints, newPt],
+              waypointKinds: [...ensureWaypointKinds(s), "via"],
+              pathKind: pathKindForSegmentMode(segMode),
+              routeSegmentMode: segMode,
+            },
+      );
+    }
+
+    segsRef.current = withPt;
+    setSegments(withPt);
+    syncMap(withPt);
+
+    const activeSeg = withPt.find((s) => s.id === aId);
+    if (!activeSeg || activeSeg.waypoints.length < 2) {
+      pushHist(withPt);
+      return;
+    }
+
+    if (!follow || activeSeg.pathKind === "freehand" || segMode === "MANUAL_STRAIGHT") {
+      const freePts = [...activeSeg.waypoints];
+      const gen = ++routeGenerationRef.current;
+      setSegments((prev) => {
+        if (gen !== routeGenerationRef.current) return prev;
+        const r = prev.map((s) =>
+          s.id === aId
+            ? {
+                ...s,
+                routePoints: freePts,
+                routingFailed: false,
+                absurdDetour: false,
+                pathKind: "freehand" as const,
+                routeSegmentMode: "MANUAL_STRAIGHT" as const,
+              }
+            : s,
+        );
+        segsRef.current = r;
+        syncMap(r);
+        return r;
+      });
+      pushHist(segsRef.current);
+      setRouteError(null);
+      scheduleLiveAuditRef.current();
+      return;
+    }
+
+    const gen = ++routeGenerationRef.current;
+    setRouting(true);
+    setRouteError(null);
+    const routed = await routeForMode(activeSeg.waypoints, mode, segMode);
+    if (gen !== routeGenerationRef.current) return;
+    if (!routed.ok) {
+      setRouteError(
+        (routed.message ?? "Sin ruta en este control point.") +
+          " No se inventa geometría. Prueba LÍNEA DIRECTA.",
+      );
+    } else if (routed.absurd && editorModeRef.current === "advanced") {
+      setRouteError(routed.message ?? "Desvío absurdo detectado.");
+    }
+    setSegments((prev) => {
+      if (gen !== routeGenerationRef.current) return prev;
+      const r = prev.map((s) =>
+        s.id === aId
+          ? {
+              ...s,
+              routePoints: routed.ok
+                ? routed.points
+                : s.routePoints.length >= 2
+                  ? s.routePoints
+                  : [],
+              routingFailed: !routed.ok,
+              absurdDetour: !!routed.absurd,
+              pathKind: "routed" as const,
+              routeSegmentMode: segMode,
+            }
+          : s,
+      );
+      segsRef.current = r;
+      const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+      cuesRef.current = reproj;
+      setCues(reproj);
+      syncMap(r);
+      return r;
+    });
+    pushHist(segsRef.current);
+    setRouting(false);
+    scheduleLiveAuditRef.current();
+  }, [syncMap, pushHist]);
+  compatPlacePointRef.current = commitEditorPoint;
+
   // ── Map init ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
@@ -521,10 +739,10 @@ export default function GpxEditor({
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const setupLayers = (m: any) => {
-      [LYR_USER, LYR_USER_RING, LYR_ROUTE_NOTES, LYR_POINTS, LYR_LINES, LYR_GLOW, LYR_CASING].forEach(l => {
+      [LYR_USER, LYR_USER_RING, LYR_ROUTE_NOTES, LYR_POINTS, LYR_COMPAT_MARK, LYR_COMPAT, LYR_LINES, LYR_GLOW, LYR_CASING].forEach(l => {
         if (m.getLayer(l)) m.removeLayer(l);
       });
-      [SRC_LINES, SRC_POINTS, SRC_USER, SRC_ROUTE_NOTES].forEach(s => {
+      [SRC_LINES, SRC_POINTS, SRC_USER, SRC_ROUTE_NOTES, SRC_COMPAT].forEach(s => {
         if (m.getSource(s)) m.removeSource(s);
       });
 
@@ -542,6 +760,10 @@ export default function GpxEditor({
       m.addSource(SRC_ROUTE_NOTES, {
         type: "geojson",
         data: buildRouteNotesGeoJSON(cuesRef.current, segsRef.current),
+      });
+      m.addSource(SRC_COMPAT, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
       });
 
       // Route layers ABOVE satellite label layers (added last = on top)
@@ -580,6 +802,31 @@ export default function GpxEditor({
           "line-opacity": o,
           "line-cap":     "round",
           "line-join":    "round",
+        },
+      });
+
+      m.addLayer({
+        id: LYR_COMPAT,
+        type: "line",
+        source: SRC_COMPAT,
+        filter: ["==", ["get", "kind"], "span"],
+        paint: {
+          "line-color": ["get", "color"],
+          "line-width": 4,
+          "line-opacity": 0.9,
+          "line-dasharray": [1.4, 1.2],
+        },
+      });
+      m.addLayer({
+        id: LYR_COMPAT_MARK,
+        type: "circle",
+        source: SRC_COMPAT,
+        filter: ["==", ["get", "kind"], "mark"],
+        paint: {
+          "circle-radius": 8,
+          "circle-color": ["get", "color"],
+          "circle-stroke-color": "#111",
+          "circle-stroke-width": 2,
         },
       });
 
@@ -671,11 +918,38 @@ export default function GpxEditor({
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      m.on("click", LYR_COMPAT_MARK, (e: any) => {
+        if (!e.features?.[0]) return;
+        e.originalEvent?.stopPropagation?.();
+        const id = String(e.features[0].properties?.id ?? "");
+        const iss = compatAuditRef.current?.issues.find((x) => x.id === id);
+        if (iss) {
+          setCompatIssueRef.current(iss);
+          const b = iss.geometry;
+          if (b.length >= 2) {
+            const lngs = b.map((p) => p[0]);
+            const lats = b.map((p) => p[1]);
+            m.fitBounds(
+              [
+                [Math.min(...lngs), Math.min(...lats)],
+                [Math.max(...lngs), Math.max(...lats)],
+              ],
+              { padding: 80, maxZoom: 17, duration: 700 },
+            );
+          } else {
+            m.flyTo({ center: iss.midpoint, zoom: 17, duration: 700 });
+          }
+        }
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       m.on("click", async (e: any) => {
         const noteHit = m.queryRenderedFeatures(e.point, { layers: [LYR_ROUTE_NOTES] });
         if (noteHit.length > 0) return;
         const hit = m.queryRenderedFeatures(e.point, { layers: [LYR_POINTS] });
         if (hit.length > 0) return;
+        const compatHit = m.queryRenderedFeatures(e.point, { layers: [LYR_COMPAT_MARK] });
+        if (compatHit.length > 0) return;
         if (styleChangingRef.current) return;
 
         const { lng, lat } = e.lngLat;
@@ -721,137 +995,38 @@ export default function GpxEditor({
         // Imported track is geometric authority — do not append routed waypoints silently.
         if (activeSeg0?.pathKind === "track") {
           setRouteError(
-            "GPX importado: geometría fija. Usa TRAZADO LIBRE para editar a mano, o crea un segmento nuevo.",
+            "GPX importado: geometría fija. Usa LÍNEA DIRECTA para editar a mano, o crea un segmento nuevo.",
           );
           return;
         }
 
         const mode = transportModeRef.current;
-        const follow = drawModeRef.current === "follow_paths";
         let newPt: LngLat = clickPt;
 
-        const prev =
-          activeSeg0 && activeSeg0.waypoints.length > 0
-            ? activeSeg0.waypoints[activeSeg0.waypoints.length - 1]
-            : null;
-
-        if (follow && prev) {
-          const snapped = await snapClickToRoute(
-            clickPt,
-            prev,
-            mode,
-            EDITOR_MAX_SNAP_METERS,
-          );
-          if (snapped.rejectedFar) {
-            setRouteError(
-              "Este camino no está disponible en los datos de routing actuales (snap > " +
-                EDITOR_MAX_SNAP_METERS +
-                " m). Usa TRAZADO LIBRE o elige un punto más cercano al graph.",
-            );
+        try {
+            const fetched = await fetchWaysAround(clickPt, 80);
+            if (!fetched.ok) {
+              setCompatDataGap(clickPt);
+              return;
+            }
+            const decision = snapClickToOsmNetwork(clickPt, fetched.ways, mode);
+            if (decision.kind === "prompt") {
+              setCompatPromptRef.current({
+                hit: decision.hit,
+                nearbyCompatible: decision.nearbyCompatible,
+              });
+              m.flyTo({ center: decision.hit.snapped, zoom: Math.max(m.getZoom(), 16), duration: 400 });
+              return;
+            }
+            if (decision.hit) {
+              newPt = decision.snapped;
+            }
+          } catch {
+            setCompatDataGap(clickPt);
             return;
           }
-          newPt = snapped.snapped;
-        }
 
-        // Insert between selected waypoint and next (advanced)
-        let withPt: Segment[];
-        if (
-          insertModeRef.current &&
-          editorModeRef.current === "advanced" &&
-          activeWptRef.current &&
-          activeWptRef.current.segId === aId
-        ) {
-          const idx = activeWptRef.current.idx;
-          withPt = curr.map(s => {
-            if (s.id !== aId) return s;
-            const wpts = [...s.waypoints];
-            const kinds = ensureWaypointKinds(s);
-            wpts.splice(idx + 1, 0, newPt);
-            kinds.splice(idx + 1, 0, "via");
-            return { ...s, waypoints: wpts, waypointKinds: kinds };
-          });
-          setInsertMode(false);
-          insertModeRef.current = false;
-        } else {
-          withPt = curr.map(s =>
-            s.id !== aId
-              ? s
-              : {
-                  ...s,
-                  waypoints: [...s.waypoints, newPt],
-                  waypointKinds: [...ensureWaypointKinds(s), "via"],
-                  pathKind: follow ? "routed" : "freehand",
-                },
-          );
-        }
-
-        segsRef.current = withPt;
-        setSegments(withPt);
-        syncMap(withPt);
-
-        const activeSeg = withPt.find(s => s.id === aId);
-        if (!activeSeg || activeSeg.waypoints.length < 2) {
-          pushHist(withPt);
-          return;
-        }
-
-        // FREE DRAW: waypoints ARE the geometry — no router.
-        if (!follow || activeSeg.pathKind === "freehand") {
-          const freePts = [...activeSeg.waypoints];
-          const gen = ++routeGenerationRef.current;
-          setSegments(prev => {
-            if (gen !== routeGenerationRef.current) return prev;
-            const r = prev.map(s =>
-              s.id === aId
-                ? {
-                    ...s,
-                    routePoints: freePts,
-                    routingFailed: false,
-                    absurdDetour: false,
-                    pathKind: "freehand" as const,
-                  }
-                : s,
-            );
-            segsRef.current = r;
-            syncMap(r);
-            return r;
-          });
-          pushHist(segsRef.current);
-          setRouteError(null);
-          return;
-        }
-
-        const gen = ++routeGenerationRef.current;
-        setRouting(true);
-        setRouteError(null);
-        const routed = await routeForMode(activeSeg.waypoints, mode);
-        if (gen !== routeGenerationRef.current) return; // latest-wins
-        if (!routed.ok) {
-          setRouteError(
-            (routed.message ?? "Sin ruta en este control point.") +
-              " No se inventa geometría. Prueba TRAZADO LIBRE.",
-          );
-        } else if (routed.absurd && editorModeRef.current === "advanced") {
-          setRouteError(routed.message ?? "Desvío absurdo detectado.");
-        }
-        setSegments(prev => {
-          if (gen !== routeGenerationRef.current) return prev;
-          const r = prev.map(s => s.id === aId ? {
-            ...s,
-            routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
-            routingFailed: !routed.ok,
-            absurdDetour: !!routed.absurd,
-            pathKind: "routed" as const,
-          } : s);
-          segsRef.current = r;
-          const reproj = reprojectCuesOnTrack(cuesRef.current, r);
-          cuesRef.current = reproj;
-          setCues(reproj);
-          syncMap(r);
-          return r;
-        });
-        pushHist(segsRef.current);
-        setRouting(false);
+        await compatPlacePointRef.current(newPt);
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -923,7 +1098,10 @@ export default function GpxEditor({
           return;
         }
         const gen = ++routeGenerationRef.current;
-        const routed = await routeForMode(seg.waypoints, transportModeRef.current);
+        const sm = parseRouteSegmentMode(
+          seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+        );
+        const routed = await routeForMode(seg.waypoints, transportModeRef.current, sm);
         if (gen !== routeGenerationRef.current) return;
         if (!routed.ok) {
           setRouteError(
@@ -957,6 +1135,12 @@ export default function GpxEditor({
       m.on("mouseleave", LYR_POINTS, () => {
         if (!dragInfo) m.getCanvas().style.cursor = "";
       });
+      m.on("mouseenter", LYR_COMPAT_MARK, () => {
+        if (!dragInfo) m.getCanvas().style.cursor = "pointer";
+      });
+      m.on("mouseleave", LYR_COMPAT_MARK, () => {
+        if (!dragInfo) m.getCanvas().style.cursor = "";
+      });
     };
 
     import("maplibre-gl").then((ml) => {
@@ -965,6 +1149,7 @@ export default function GpxEditor({
         style: MAP_STYLES[0].url as string,
         center: [-3.7, 40.4],
         zoom: 5,
+        maxZoom: 22,
         attributionControl: { compact: true },
       });
       mapRef.current = map;
@@ -976,7 +1161,19 @@ export default function GpxEditor({
 
       map.on("style.load", () => {
         if (!eventsAttached) return;
+        // Cap overscaling for Esri World Imagery (native maxzoom 19).
+        if (mapStyleIdRef.current === "satellite") {
+          map.setMaxZoom(19);
+        } else {
+          map.setMaxZoom(22);
+        }
         setupLayers(map);
+        syncMap(segsRef.current);
+        try {
+          map.getSource(SRC_COMPAT)?.setData(
+            auditToGeoJSON(compatAuditRef.current, keptCompatIdsRef.current, null),
+          );
+        } catch { /* */ }
         syncUserMarker(
           // read latest via closure — userLngLat may be stale; source syncs via effect
           null,
@@ -1014,13 +1211,18 @@ export default function GpxEditor({
     return () => { cancelled = true; };
   }, [mapStyleId]);
 
-  // Re-route only "routed" segments — never rewrite imported track / freehand.
+  // Re-route only routed segments (FOLLOW_ROAD / FOLLOW_TRAIL) — never rewrite track / MANUAL_STRAIGHT.
   const rerouteAll = useCallback(async (mode: TransportMode) => {
     const curr = segsRef.current;
     const need = curr.filter(
       (s) =>
         s.waypoints.length >= 2 &&
-        (s.pathKind ?? "routed") === "routed",
+        isRoutedSegmentMode(
+          parseRouteSegmentMode(
+            s.routeSegmentMode ?? (s.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+          ),
+        ) &&
+        (s.pathKind ?? "routed") !== "track",
     );
     if (need.length === 0) return;
     const gen = ++routeGenerationRef.current;
@@ -1030,14 +1232,19 @@ export default function GpxEditor({
     for (let i = 0; i < next.length; i++) {
       const s = next[i];
       if (s.waypoints.length < 2) continue;
-      if ((s.pathKind ?? "routed") !== "routed") continue;
-      const routed = await routeForMode(s.waypoints, mode);
+      const sm = parseRouteSegmentMode(
+        s.routeSegmentMode ?? (s.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+      );
+      if (!isRoutedSegmentMode(sm) || (s.pathKind ?? "routed") === "track") continue;
+      const routed = await routeForMode(s.waypoints, mode, sm);
       if (gen !== routeGenerationRef.current) return;
       next[i] = {
         ...s,
         routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
         routingFailed: !routed.ok,
         absurdDetour: !!routed.absurd,
+        routeSegmentMode: sm,
+        pathKind: pathKindForSegmentMode(sm),
       };
       if (!routed.ok) {
         setRouteError(
@@ -1062,8 +1269,281 @@ export default function GpxEditor({
   const handleTransportChange = useCallback((mode: TransportMode) => {
     setTransportMode(mode);
     transportModeRef.current = mode;
-    void rerouteAll(mode);
+    setCompatIssue(null);
+    setCompatPrompt(null);
+    setCompatAltLine(null);
+    setCompatAltVia(null);
+    setKeptCompatIds(new Set());
+    void (async () => {
+      await rerouteAll(mode);
+      const pts = flattenRouteLngLats(segsRef.current);
+      if (pts.length < 2) {
+        setCompatAudit(null);
+        return;
+      }
+      setCompatLoading(true);
+      try {
+        const fetched = await fetchWaysAlongRoute(pts);
+        if (!fetched.ok && fetched.ways.length === 0) {
+          setRouteError("No se pudo reanalizar la ruta con la cartografía disponible. NavRide no asume que sea válida.");
+          return;
+        }
+        setCompatAudit(auditRouteGeometry(pts, fetched.ways, mode));
+        if (!fetched.ok) {
+          setRouteError("La revisión del nuevo perfil puede estar incompleta: no se pudieron leer todas las vías.");
+        }
+      } catch {
+        setRouteError("No se pudo reanalizar la ruta con la cartografía disponible.");
+      } finally {
+        setCompatLoading(false);
+      }
+    })();
   }, [rerouteAll]);
+
+  const flyToIssue = useCallback((iss: CompatibilityIssue) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const b = iss.geometry;
+    if (b.length >= 2) {
+      const lngs = b.map((p) => p[0]);
+      const lats = b.map((p) => p[1]);
+      map.fitBounds(
+        [
+          [Math.min(...lngs), Math.min(...lats)],
+          [Math.max(...lngs), Math.max(...lats)],
+        ],
+        { padding: 80, maxZoom: 17, duration: 700 },
+      );
+    } else {
+      map.flyTo({ center: iss.midpoint, zoom: 17, duration: 700 });
+    }
+  }, []);
+
+  const runCompatReview = useCallback(async () => {
+    const pts = flattenRouteLngLats(segsRef.current);
+    if (pts.length < 2) {
+      setRouteError("Hace falta un recorrido con al menos dos puntos para revisar la ruta.");
+      return;
+    }
+    setCompatLoading(true);
+    setCompatIssue(null);
+    setRouteError(null);
+    try {
+      const fetched = await fetchWaysAlongRoute(pts);
+      if (!fetched.ok && fetched.ways.length === 0) {
+        setRouteError(
+          "Según la información cartográfica disponible, no se pudieron cargar vías para esta zona. NavRide no asume que la ruta sea válida.",
+        );
+        return;
+      }
+      const audit = auditRouteGeometry(pts, fetched.ways, transportModeRef.current);
+      setCompatAudit(audit);
+      if (!fetched.ok || fetched.ways.length === 0) {
+        setRouteError(
+          "Según la información cartográfica disponible, la revisión puede quedar incompleta.",
+        );
+      }
+    } catch {
+      setRouteError("No se pudo completar la revisión de ruta con la cartografía disponible.");
+    } finally {
+      setCompatLoading(false);
+    }
+  }, []);
+
+  const scheduleLiveAudit = useCallback(() => {
+    window.setTimeout(() => {
+      void (async () => {
+        const pts = flattenRouteLngLats(segsRef.current);
+        if (pts.length < 2) return;
+        const tail = tailPolyline(pts, 2.5);
+        const fetched = await fetchWaysAlongRoute(tail.pts);
+        if (!fetched.ok && fetched.ways.length === 0) return;
+        const partial = auditRouteGeometry(tail.pts, fetched.ways, transportModeRef.current);
+        setCompatAudit((prev) => mergeTailAudit(prev, partial, tail.offsetKm));
+      })();
+    }, 800);
+  }, []);
+  scheduleLiveAuditRef.current = scheduleLiveAudit;
+
+  const findCompatAlternative = useCallback(async (around: LngLat, from?: LngLat, to?: LngLat) => {
+    setCompatFindingAlt(true);
+    try {
+      const mode = transportModeRef.current;
+      const fetched = await fetchWaysAround(around, 120);
+      if (!fetched.ok) {
+        setRouteError("No se pudo buscar una alternativa: la cartografía no está disponible ahora.");
+        return;
+      }
+      const preferred = compatibleWaysOnly(fetched.ways, mode);
+      if (preferred.length === 0) {
+        setRouteError("No hay una conexión compatible cercana según la cartografía disponible.");
+        setCompatAltLine(null);
+        setCompatAltVia(null);
+        return;
+      }
+      const a = from ?? around;
+      const b = to ?? around;
+      const line = routeOnOsmNetwork(preferred, a, b, mode);
+      const via = rankWaysNearClick(around, preferred, mode, 120)[0]?.snapped ?? line[Math.floor(line.length / 2)] ?? around;
+      setCompatAltVia(via);
+      setCompatAltLine(line.length >= 2 ? line : [a, via]);
+      mapRef.current?.flyTo({ center: via, zoom: 16, duration: 500 });
+    } finally {
+      setCompatFindingAlt(false);
+    }
+  }, []);
+
+  const acceptCompatAlt = useCallback(async () => {
+    const via = compatAltVia;
+    if (!via) return;
+    setCompatPrompt(null);
+    setCompatAltLine(null);
+    setCompatAltVia(null);
+    if (compatIssue) {
+      const aId = activeIdRef.current;
+      const curr = segsRef.current;
+      const seg = curr.find((s) => s.id === aId);
+      if (seg && seg.waypoints.length >= 1) {
+        let best = 0;
+        let bestD = Infinity;
+        for (let i = 0; i < seg.waypoints.length; i++) {
+          const d = haversineKm(seg.waypoints[i], via);
+          if (d < bestD) {
+            bestD = d;
+            best = i;
+          }
+        }
+        const insertAt = Math.min(seg.waypoints.length, best + 1);
+        const next = curr.map((s) => {
+          if (s.id !== aId) return s;
+          const wpts = [...s.waypoints];
+          const kinds = ensureWaypointKinds(s);
+          wpts.splice(insertAt, 0, via);
+          kinds.splice(insertAt, 0, "via");
+          return { ...s, waypoints: wpts, waypointKinds: kinds };
+        });
+        segsRef.current = next;
+        setSegments(next);
+        const updated = next.find((s) => s.id === aId)!;
+        const sm = parseRouteSegmentMode(
+          updated.routeSegmentMode ?? DEFAULT_ROUTE_SEGMENT_MODE,
+        );
+        if (isRoutedSegmentMode(sm) && updated.waypoints.length >= 2) {
+          const routed = await routeForMode(updated.waypoints, transportModeRef.current, sm);
+          const r = next.map((s) =>
+            s.id === aId
+              ? {
+                  ...s,
+                  routePoints: routed.ok ? routed.points : s.routePoints,
+                  routingFailed: !routed.ok,
+                }
+              : s,
+          );
+          segsRef.current = r;
+          setSegments(r);
+          syncMap(r);
+          pushHist(r);
+        } else {
+          syncMap(next);
+          pushHist(next);
+        }
+        setCompatIssue(null);
+        void runCompatReview();
+        return;
+      }
+    }
+    await commitEditorPoint(via);
+  }, [compatAltVia, compatIssue, commitEditorPoint, syncMap, pushHist, runCompatReview]);
+
+  /** Change mode on the ACTIVE segment only — partial recalculation gate. */
+  const handleSegmentModeChange = useCallback(async (mode: RouteSegmentMode) => {
+    setDrawMode(mode);
+    drawModeRef.current = mode;
+    const aId = activeIdRef.current;
+    const curr = segsRef.current;
+    const idx = curr.findIndex((s) => s.id === aId);
+    if (idx < 0) return;
+
+    // Fingerprints of other segments BEFORE change (A→B / C→D must stay equal).
+    const beforeFp = curr.map((s) => geometryFingerprint(s.routePoints.length >= 2 ? s.routePoints : s.waypoints));
+
+    const target = curr[idx];
+    if (target.pathKind === "track") {
+      setRouteError("GPX importado: no se cambia el modo de un track autoritativo. Crea un segmento nuevo.");
+      return;
+    }
+
+    const gen = ++routeGenerationRef.current;
+    setRouting(true);
+    setRouteError(null);
+
+    let routePoints = target.routePoints;
+    let routingFailed = false;
+    let absurdDetour = false;
+
+    if (mode === "MANUAL_STRAIGHT") {
+      routePoints = [...target.waypoints];
+      routingFailed = false;
+    } else if (target.waypoints.length >= 2) {
+      const routed = await routeForMode(
+        target.waypoints,
+        transportModeRef.current,
+        mode,
+      );
+      if (gen !== routeGenerationRef.current) return;
+      if (!routed.ok) {
+        routePoints = [];
+        routingFailed = true;
+        setRouteError(
+          (routed.message ?? "Sin ruta válida para este tramo.") +
+            " No se usa recta falsa como éxito.",
+        );
+      } else {
+        routePoints = routed.points;
+        absurdDetour = !!routed.absurd;
+        if (routed.absurd && editorModeRef.current === "advanced") {
+          setRouteError(routed.message ?? "Desvío absurdo detectado.");
+        }
+      }
+    }
+
+    if (gen !== routeGenerationRef.current) return;
+
+    const next = curr.map((s, i) =>
+      i === idx
+        ? {
+            ...s,
+            routeSegmentMode: mode,
+            pathKind: pathKindForSegmentMode(mode),
+            routePoints,
+            routingFailed,
+            absurdDetour,
+          }
+        : s,
+    );
+
+    // Gate: other segments' geometry must be byte-equal (fingerprint).
+    for (let i = 0; i < next.length; i++) {
+      if (i === idx) continue;
+      const after = geometryFingerprint(
+        next[i].routePoints.length >= 2 ? next[i].routePoints : next[i].waypoints,
+      );
+      if (after !== beforeFp[i]) {
+        setRouteError("ERROR interno: reroute parcial mutó otro tramo — abortado.");
+        setRouting(false);
+        return;
+      }
+    }
+
+    segsRef.current = next;
+    setSegments(next);
+    const reproj = reprojectCuesOnTrack(cuesRef.current, next);
+    cuesRef.current = reproj;
+    setCues(reproj);
+    syncMap(next);
+    pushHist(next);
+    setRouting(false);
+  }, [syncMap, pushHist]);
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -1125,7 +1605,10 @@ export default function GpxEditor({
     const closedKinds: WaypointKind[] = [...ensureWaypointKinds(seg), "via"];
     setRouting(true);
     setRouteError(null);
-    const routed = await routeForMode(closed, transportModeRef.current);
+    const sm = parseRouteSegmentMode(
+      seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+    );
+    const routed = await routeForMode(closed, transportModeRef.current, sm);
     if (!routed.ok) setRouteError(routed.message ?? "No se pudo cerrar el bucle.");
     const upd = segsRef.current.map(s =>
       s.id === activeIdRef.current
@@ -1221,7 +1704,10 @@ export default function GpxEditor({
       }
       setRouting(true);
       const gen = ++routeGenerationRef.current;
-      const routed = await routeForMode(seg.waypoints, transportModeRef.current);
+      const smDel = parseRouteSegmentMode(
+        seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+      );
+      const routed = await routeForMode(seg.waypoints, transportModeRef.current, smDel);
       if (gen !== routeGenerationRef.current) return;
       if (!routed.ok) setRouteError(routed.message ?? "Punto inalcanzable.");
       const r = upd.map(s => s.id === segId ? {
@@ -1287,7 +1773,10 @@ export default function GpxEditor({
       }
       setRouting(true);
       const gen = ++routeGenerationRef.current;
-      const routed = await routeForMode(seg.waypoints, transportModeRef.current);
+      const smOrd = parseRouteSegmentMode(
+        seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+      );
+      const routed = await routeForMode(seg.waypoints, transportModeRef.current, smOrd);
       if (gen !== routeGenerationRef.current) return;
       const r = upd.map(s => s.id === segId ? {
         ...s,
@@ -1417,7 +1906,7 @@ export default function GpxEditor({
     const pts = segments.flatMap(s =>
       s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints : [],
     );
-    const gpx  = exportGpx(segments, routeTitle, cues);
+    const gpx  = exportGpx(segments, routeTitle, cues, capsuleRef.current);
     const routeJson = buildRouteJson(segments, routeTitle, cues, pts);
     if (embedNavRideApp) {
       postToNavRideApp("EXPORT_GPX", {
@@ -1440,11 +1929,68 @@ export default function GpxEditor({
     geometry: { lat: number; lon: number }[],
     extensions: NavRideRoute | null,
     asTrackOnly: boolean,
+    capsule?: RouteCapsule | null,
   ) => {
+    if (capsule !== undefined) {
+      capsuleRef.current = capsule;
+    }
     const pts: LngLat[] = geometry.map((p) => [p.lon, p.lat]);
     if (pts.length < 1) return;
 
     const color = ensureMinBrightness(COLORS[0].value);
+    const extSegs = extensions?.segments ?? [];
+
+    // Reopen editor-authored multi-segment routes with explicit modes (not silent track collapse).
+    if (
+      !asTrackOnly &&
+      extSegs.length > 0 &&
+      extSegs.some((s) => s.routeSegmentMode || s.pathKind === "freehand" || s.pathKind === "routed")
+    ) {
+      const rebuilt: Segment[] = extSegs.map((es, i) => {
+        const start = Math.max(0, es.startIndex ?? 0);
+        const end = Math.min(pts.length - 1, es.endIndex ?? pts.length - 1);
+        const slice = pts.slice(start, end + 1);
+        const mode = parseRouteSegmentMode(
+          es.routeSegmentMode ??
+            (es.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+        );
+        const wpts =
+          slice.length <= 2
+            ? slice
+            : [slice[0], slice[slice.length - 1]];
+        return {
+          id: es.segmentId || uid(),
+          name: es.name || `Segmento ${i + 1}`,
+          color: ensureMinBrightness(es.customColor || COLORS[i % COLORS.length].value),
+          waypoints: wpts.length >= 1 ? wpts : [],
+          waypointKinds: wpts.map(() => "via" as WaypointKind),
+          routePoints: slice.length >= 2 ? slice : [],
+          routingFailed: slice.length < 2,
+          pathKind: (es.pathKind === "track"
+            ? "track"
+            : pathKindForSegmentMode(mode)) as "routed" | "freehand" | "track",
+          routeSegmentMode: mode,
+        };
+      });
+      if (rebuilt.length > 0) {
+        segsRef.current = rebuilt;
+        setSegments(rebuilt);
+        setActiveId(rebuilt[0].id);
+        activeIdRef.current = rebuilt[0].id;
+        const sm0 = rebuilt[0].routeSegmentMode ?? DEFAULT_ROUTE_SEGMENT_MODE;
+        setDrawMode(sm0);
+        drawModeRef.current = sm0;
+        if (extensions?.name) setRouteTitle(extensions.name);
+        if (extensions?.cues?.length) setCues(extensions.cues);
+        else setCues([]);
+        syncMap(rebuilt);
+        pushHist(rebuilt);
+        setImportDialog(null);
+        setRouteError("GPX importado. Pulsa Revisar ruta para comprobar la compatibilidad con el modo activo.");
+        return;
+      }
+    }
+
     const viaFromExt = extensions?.viaPoints ?? [];
     const shpFromExt = extensions?.shapingPoints ?? [];
     let waypoints: LngLat[] = [];
@@ -1474,6 +2020,10 @@ export default function GpxEditor({
       }
     }
 
+    const firstMode = parseRouteSegmentMode(
+      extSegs[0]?.routeSegmentMode ??
+        (asTrackOnly ? "FOLLOW_ROAD" : extSegs[0]?.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+    );
     const seg: Segment = {
       id: uid(),
       name: extensions?.name || "Importado",
@@ -1482,7 +2032,8 @@ export default function GpxEditor({
       waypointKinds,
       routePoints: pts.length >= 2 ? pts : [],
       routingFailed: pts.length < 2,
-      pathKind: "track",
+      pathKind: asTrackOnly ? "track" : pathKindForSegmentMode(firstMode),
+      routeSegmentMode: asTrackOnly ? DEFAULT_ROUTE_SEGMENT_MODE : firstMode,
     };
     const next = [seg];
     segsRef.current = next;
@@ -1495,7 +2046,7 @@ export default function GpxEditor({
     syncMap(next);
     pushHist(next);
     setImportDialog(null);
-    setRouteError(null);
+    setRouteError("GPX importado. Pulsa Revisar ruta para comprobar la compatibilidad con el modo activo.");
   }, [syncMap, pushHist]);
 
   const handleGpxFile = useCallback((file: File) => {
@@ -1509,7 +2060,12 @@ export default function GpxEditor({
         return;
       }
       if (parsed.issues.length === 0 && parsed.geometry.length >= 2) {
-        applyImportedGeometry(parsed.geometry, parsed.extensions, false);
+        applyImportedGeometry(
+          parsed.geometry,
+          parsed.extensions,
+          false,
+          parsed.capsule,
+        );
         return;
       }
       // Recoverable UX instead of only INVALID
@@ -1517,6 +2073,7 @@ export default function GpxEditor({
         issues: parsed.issues.length ? parsed.issues : ["GPX parcial — elige cómo importar."],
         geometry: parsed.geometry,
         extensions: parsed.extensions,
+        capsule: parsed.capsule,
         fileName: file.name,
       });
     };
@@ -1582,7 +2139,7 @@ export default function GpxEditor({
       return null;
     }
 
-    const gpx = exportGpx(segments, routeTitle, cues);
+    const gpx = exportGpx(segments, routeTitle, cues, capsuleRef.current);
     const res = await fetch("/api/gpx/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1623,7 +2180,7 @@ export default function GpxEditor({
       });
       return;
     }
-    const gpx = exportGpx(segments, routeTitle, cues);
+    const gpx = exportGpx(segments, routeTitle, cues, capsuleRef.current);
     const routeJson = buildRouteJson(segments, routeTitle, cues, allPts);
     postToNavRideApp(alsoOpen ? "OPEN_IN_NAVRIDE" : "SAVE_ROUTE", {
       gpxXml: gpx,
@@ -1731,7 +2288,12 @@ export default function GpxEditor({
           setRouteError(parsed.issues[0] ?? "GPX no válido.");
           return;
         }
-        applyImportedGeometry(parsed.geometry, parsed.extensions, false);
+        applyImportedGeometry(
+          parsed.geometry,
+          parsed.extensions,
+          false,
+          parsed.capsule,
+        );
         if (typeof msg.payload?.routeId === "string") {
           setSavedRouteId(msg.payload.routeId);
         }
@@ -1895,39 +2457,29 @@ export default function GpxEditor({
             </button>
           ))}
         </div>
-        <label className="text-xs text-white/40 uppercase tracking-widest mt-1">Trazado</label>
-        <div className="grid grid-cols-2 gap-1.5">
-          <button
-            type="button"
-            onClick={() => setDrawMode("follow_paths")}
-            className={`rounded-lg border px-2 py-2 text-xs ${
-              drawMode === "follow_paths"
-                ? "border-[#FF5A1F]/50 bg-[#FF5A1F]/10 text-white"
-                : "border-white/10 text-white/50"
-            }`}
-          >
-            Seguir caminos
-          </button>
-          <button
-            type="button"
-            onClick={() => setDrawMode("free_draw")}
-            className={`rounded-lg border px-2 py-2 text-xs ${
-              drawMode === "free_draw"
-                ? "border-[#FF5A1F]/50 bg-[#FF5A1F]/10 text-white"
-                : "border-white/10 text-white/50"
-            }`}
-          >
-            Trazado libre
-          </button>
+        <label className="text-xs text-white/40 uppercase tracking-widest mt-1">Modo del tramo</label>
+        <div className="grid grid-cols-1 gap-1.5">
+          {ROUTE_SEGMENT_MODES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => void handleSegmentModeChange(m.id)}
+              className={`rounded-lg border px-2 py-2 text-xs text-left ${
+                drawMode === m.id
+                  ? "border-[#FF5A1F]/50 bg-[#FF5A1F]/10 text-white"
+                  : "border-white/10 text-white/50"
+              }`}
+            >
+              <span className="font-medium">{m.label}</span>
+            </button>
+          ))}
         </div>
         <p className="text-[10px] text-white/35 leading-snug">
-          {drawMode === "follow_paths"
-            ? `Routing entre control points (snap ≤ ${EDITOR_MAX_SNAP_METERS} m). Sin ruta → error honesto, no rodeo inventado.`
-            : "Sin routing: los puntos son la geometría exacta (útil si OSM/graph no tiene el camino)."}
+          {ROUTE_SEGMENT_MODES.find((m) => m.id === drawMode)?.hint ?? ""}
         </p>
-        {(transportMode === "moto" || transportMode === "car") && drawMode === "follow_paths" && (
+        {(transportMode === "moto" || transportMode === "car") && drawMode === "FOLLOW_ROAD" && (
           <p className="text-[10px] text-white/35 leading-snug">
-            Moto/coche usan perfil OSRM driving en web; la app usa Valhalla local. Cambiar modo solo re-enruta segmentos &quot;routed&quot; (no GPX importado).
+            Moto/coche: web usa OSRM driving; la app usa Valhalla local. Cambiar modo solo re-enruta el tramo activo.
           </p>
         )}
       </div>
@@ -1937,13 +2489,16 @@ export default function GpxEditor({
         className={`rounded-lg px-3 py-2 text-xs border ${
           routeHealth.health === "GOOD"
             ? "border-green-500/30 text-green-400 bg-green-500/5"
-            : routeHealth.health === "REVIEW"
+            : routeHealth.health === "REVIEW" || routeHealth.health === "DRAFT"
               ? "border-[#FF9500]/30 text-[#FF9500] bg-[#FF9500]/5"
               : "border-red-500/30 text-red-400 bg-red-500/5"
         }`}
       >
-        Salud: {routeHealth.health}
-        {(routeHealth.issues[0] ?? routeHealth.warnings[0]) && (
+        {routeHealth.health === "DRAFT"
+          ? (routeHealth.userMessage ?? "Borrador")
+          : `Salud: ${routeHealth.health}`}
+        {routeHealth.health !== "DRAFT" &&
+          (routeHealth.issues[0] ?? routeHealth.warnings[0]) && (
           <p className="mt-1 opacity-80">
             {routeHealth.issues[0] ?? routeHealth.warnings[0]}
           </p>
@@ -1997,7 +2552,16 @@ export default function GpxEditor({
         {segments.map(seg => (
           <div
             key={seg.id}
-            onClick={() => { setActiveId(seg.id); activeIdRef.current = seg.id; }}
+            onClick={() => {
+              setActiveId(seg.id);
+              activeIdRef.current = seg.id;
+              const sm = parseRouteSegmentMode(
+                seg.routeSegmentMode ??
+                  (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+              );
+              setDrawMode(sm);
+              drawModeRef.current = sm;
+            }}
             className={`rounded-xl border p-3 cursor-pointer transition ${
               seg.id === activeId
                 ? "border-[#f97316]/40 bg-[#f97316]/5"
@@ -2093,6 +2657,14 @@ export default function GpxEditor({
             {seg.routingFailed && (
               <p className="text-[10px] text-red-400 mt-1">Tramo sin ruta — no se dibuja recta falsa</p>
             )}
+            <p className="text-[10px] text-white/45 mt-1">
+              {labelForSegmentMode(
+                parseRouteSegmentMode(
+                  seg.routeSegmentMode ??
+                    (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+                ),
+              )}
+            </p>
             {advanced && seg.absurdDetour && (
               <p className="text-[10px] text-[#FF9500] mt-1">Desvío absurdo — revisa waypoints</p>
             )}
@@ -2314,8 +2886,30 @@ export default function GpxEditor({
       {/* Note */}
       <p className="text-xs text-white/25 flex items-start gap-1.5">
         <MapPin size={11} className="shrink-0 mt-0.5" />
-        Snap ≤{EDITOR_MAX_SNAP_METERS} m · Seguir caminos / Trazado libre · Satélite ESRI + labels vector OpenFreeMap · {SATELLITE_ATTRIBUTION.split("|")[0]}
+        Red OSM (todas las highway) · el perfil decide compatibilidad · Satélite ESRI + labels OpenFreeMap · {SATELLITE_ATTRIBUTION.split("|")[0]}
       </p>
+
+      <RouteCompatibilityReview
+        audit={compatAudit}
+        loading={compatLoading}
+        onReview={() => void runCompatReview()}
+        onSelectIssue={(iss) => {
+          setCompatIssue(iss);
+          flyToIssue(iss);
+        }}
+        onKeep={() => {
+          if (!compatIssue) return;
+          setKeptCompatIds((prev) => new Set([...prev, compatIssue.id]));
+          setCompatIssue(null);
+        }}
+        onFindAlt={() => {
+          if (!compatIssue) return;
+          void findCompatAlternative(compatIssue.midpoint, compatIssue.start, compatIssue.end);
+        }}
+        onEdit={() => setCompatIssue(null)}
+        onBack={() => setCompatIssue(null)}
+        selected={compatIssue}
+      />
 
       {/* Import GPX (advanced capability) */}
       {advanced && (
@@ -2417,6 +3011,58 @@ export default function GpxEditor({
       {/* ── Map container: full browser when sidebar collapsed ── */}
       <div className={mapInsetClass}>
         <div ref={mapContainer} className="w-full h-full" />
+
+        {(compatPrompt || compatAltLine || compatDataGap) && (
+          <div className="absolute top-14 right-3 z-20 w-64 max-w-[calc(100%-4.5rem)]">
+            {compatDataGap && (
+              <CompatibilityDataGapCard
+                onPlaceUnchecked={() => {
+                  const pt = compatDataGap;
+                  setCompatDataGap(null);
+                  void commitEditorPoint(pt);
+                }}
+                onCancel={() => setCompatDataGap(null)}
+              />
+            )}
+            {compatPrompt && (
+              <CompatibilityPromptCard
+                prompt={compatPrompt}
+                mode={transportMode}
+                findingAlt={compatFindingAlt}
+                onViewMap={() => {
+                  mapRef.current?.flyTo({
+                    center: compatPrompt.hit.snapped,
+                    zoom: 17,
+                    duration: 500,
+                  });
+                }}
+                onFindAlt={() => {
+                  const aId = activeIdRef.current;
+                  const seg = segsRef.current.find((s) => s.id === aId);
+                  const last = seg?.waypoints[seg.waypoints.length - 1];
+                  const target = compatPrompt.nearbyCompatible?.snapped ?? compatPrompt.hit.snapped;
+                  void findCompatAlternative(target, last, target);
+                }}
+                onCancel={() => {
+                  setCompatPrompt(null);
+                  setCompatAltLine(null);
+                  setCompatAltVia(null);
+                }}
+              />
+            )}
+            {compatAltLine && (
+              <div className="mt-2">
+                <CompatibilityAltPreview
+                  onAccept={() => void acceptCompatAlt()}
+                  onDismiss={() => {
+                    setCompatAltLine(null);
+                    setCompatAltVia(null);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Desktop: colapsar sidebar → mapa 100vw */}
         <button
@@ -2589,12 +3235,18 @@ export default function GpxEditor({
             <p className="text-[11px] text-white/50">
               {importDialog.geometry.length} puntos detectados
               {importDialog.extensions ? " · extensiones NavRide presentes" : ""}
+              {importDialog.capsule ? " · capsule" : ""}
             </p>
             <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={() =>
-                  applyImportedGeometry(importDialog.geometry, importDialog.extensions, true)
+                  applyImportedGeometry(
+                    importDialog.geometry,
+                    importDialog.extensions,
+                    true,
+                    importDialog.capsule,
+                  )
                 }
                 className="rounded-full bg-[#f97316] py-2.5 text-sm font-semibold text-white"
               >
@@ -2603,7 +3255,12 @@ export default function GpxEditor({
               <button
                 type="button"
                 onClick={() =>
-                  applyImportedGeometry(importDialog.geometry, importDialog.extensions, false)
+                  applyImportedGeometry(
+                    importDialog.geometry,
+                    importDialog.extensions,
+                    false,
+                    importDialog.capsule,
+                  )
                 }
                 className="rounded-full border border-white/20 py-2.5 text-sm text-white/80 hover:text-white"
               >

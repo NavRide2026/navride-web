@@ -4,8 +4,15 @@ import {
   parseNavRideRoute,
   routeToJson,
 } from "./types.ts";
+import {
+  ROUTE_SCHEMA_VERSION,
+  type RouteCapsule,
+  parseRouteCapsule,
+} from "./route-capsule.ts";
 
 export const NAVRIDE_GPX_NS = "https://navride.app/ns/gpx/v1";
+export { ROUTE_SCHEMA_VERSION, parseRouteCapsule };
+export type { RouteCapsule };
 
 export type TrackPointInput = {
   lat: number;
@@ -17,6 +24,7 @@ export type TrackPointInput = {
 export type ParseGpxResult = {
   geometry: NavRideLatLon[];
   extensions: NavRideRoute | null;
+  capsule: RouteCapsule | null;
   issues: string[];
   recoverable: boolean;
 };
@@ -41,12 +49,14 @@ function formatTrkpt(p: TrackPointInput): string {
 }
 
 /**
- * Export GPX 1.1 with xmlns:navride and CDATA JSON of NavRideRoute.
+ * Export GPX 1.1 with xmlns:navride and CDATA JSON of NavRideRoute + capsule.
+ * Preserves an incoming capsule when provided (no silent drop on re-save).
  */
 export function exportGpxWithExtensions(
   routeJson: NavRideRoute | Record<string, unknown>,
   title: string,
   trackPoints: TrackPointInput[],
+  capsule?: RouteCapsule | null,
 ): string {
   const route =
     "schemaVersion" in routeJson && "routeId" in routeJson
@@ -82,6 +92,72 @@ export function exportGpxWithExtensions(
     })
     .join("\n");
 
+  const now = new Date().toISOString();
+  const contentHash = trackPoints
+    .map((p) => `${Number(p.lat).toFixed(6)},${Number(p.lon).toFixed(6)}`)
+    .join("|");
+  const capsulePayload: RouteCapsule = capsule
+    ? {
+        ...capsule,
+        routeSchemaVersion: ROUTE_SCHEMA_VERSION,
+        originalTrack: {
+          ...capsule.originalTrack,
+          contentHash:
+            capsule.originalTrack.contentHash &&
+            capsule.originalTrack.contentHash.length > 0
+              ? capsule.originalTrack.contentHash
+              : contentHash,
+        },
+      }
+    : {
+    routeSchemaVersion: ROUTE_SCHEMA_VERSION,
+    capsuleId: `web-${route.routeId}`,
+    originalTrack: {
+      trackId: route.routeId,
+      source: "web_editor",
+      originalFormat: "gpx",
+      importedAt: now,
+      contentHash,
+      originalMetadata: { name: safeTitle },
+    },
+    derivedRoute: {
+      derivedRouteId: `derived-${route.routeId}`,
+      sourceTrackId: route.routeId,
+      derivationMethod: "passthrough_original_track",
+      createdAt: now,
+    },
+    canonicalRoute: {
+      canonicalRouteId: route.routeId,
+      name: title || route.name || "Ruta",
+      provenance: {
+        sourceType: "WEB_EDITOR",
+        sourceId: route.routeId,
+        sourceHash: contentHash,
+        generatedAt: now,
+        schemaVersion: ROUTE_SCHEMA_VERSION,
+      },
+      sourceTrackId: route.routeId,
+      metadata: { routeSchemaVersion: ROUTE_SCHEMA_VERSION },
+    },
+    provenance: {
+      sourceType: "WEB_EDITOR",
+      sourceId: route.routeId,
+      sourceHash: contentHash,
+      generatedAt: now,
+      schemaVersion: ROUTE_SCHEMA_VERSION,
+    },
+  };
+  // Compact: do not duplicate full geometry in capsule (lives in <trk>).
+  const compactCapsule = {
+    ...capsulePayload,
+    originalTrack: {
+      ...capsulePayload.originalTrack,
+      trackPoints: undefined,
+      waypoints: undefined,
+    },
+  };
+  const capsuleJson = JSON.stringify(compactCapsule);
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="NavRide Web Editor" xmlns="http://www.topografix.com/GPX/1/1" xmlns:navride="${NAVRIDE_GPX_NS}">
   <metadata><name>${safeTitle}</name></metadata>
@@ -93,6 +169,7 @@ ${trkpts}
   </trk>
   <extensions>
     <navride:route><![CDATA[${payload}]]></navride:route>
+    <navride:capsule><![CDATA[${capsuleJson}]]></navride:capsule>
   </extensions>
 </gpx>`;
 }
@@ -140,12 +217,28 @@ function extractTrackPoints(text: string): NavRideLatLon[] {
   return pts;
 }
 
+export function parseCapsuleXml(xml: string): RouteCapsule | null {
+  const re =
+    /<(?:navride:)?capsule\b[^>]*>([\s\S]*?)<\/(?:navride:)?capsule>/i;
+  const m = xml.match(re);
+  if (!m) return null;
+  const body = m[1].trim();
+  const cdata = body.match(/<!\[CDATA\[([\s\S]*?)\]\]>/i);
+  const jsonText = (cdata ? cdata[1] : body).trim();
+  const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    return parseRouteCapsule(JSON.parse(jsonMatch[0]));
+  } catch {
+    return null;
+  }
+}
+
 export function parseExtensionsXml(xml: string): NavRideRoute | null {
   const re = /<(?:navride:)?route\b[^>]*>([\s\S]*?)<\/(?:navride:)?route>/i;
   const m = xml.match(re);
   if (!m) return null;
   const body = m[1].trim();
-  // Strip CDATA wrapper if present
   const cdata = body.match(/<!\[CDATA\[([\s\S]*?)\]\]>/i);
   const jsonText = (cdata ? cdata[1] : body).trim();
   const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
@@ -205,6 +298,7 @@ export function parseGpxFile(text: string): ParseGpxResult {
     return {
       geometry: [],
       extensions: null,
+      capsule: null,
       issues: ["Archivo vacío o ilegible."],
       recoverable: false,
     };
@@ -216,11 +310,17 @@ export function parseGpxFile(text: string): ParseGpxResult {
   }
 
   let extensions: NavRideRoute | null = null;
+  let capsule: RouteCapsule | null = null;
   try {
     extensions = parseExtensionsXml(trimmed);
   } catch {
     issues.push("Extensiones NavRide dañadas o ilegibles.");
     extensions = null;
+  }
+  try {
+    capsule = parseCapsuleXml(trimmed);
+  } catch {
+    capsule = null;
   }
 
   if (trimmed.includes("navride:") && !extensions) {
@@ -252,6 +352,7 @@ export function parseGpxFile(text: string): ParseGpxResult {
       return {
         geometry: extensions.geometry.points,
         extensions,
+        capsule,
         issues,
         recoverable: true,
       };
@@ -260,6 +361,7 @@ export function parseGpxFile(text: string): ParseGpxResult {
     return {
       geometry: [],
       extensions,
+      capsule,
       issues,
       recoverable: false,
     };
@@ -274,5 +376,5 @@ export function parseGpxFile(text: string): ParseGpxResult {
   }
 
   const recoverable = geometry.length >= 1;
-  return { geometry, extensions, issues, recoverable };
+  return { geometry, extensions, capsule, issues, recoverable };
 }

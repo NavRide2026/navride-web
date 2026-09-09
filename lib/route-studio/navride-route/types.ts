@@ -52,6 +52,12 @@ export interface NavRideRoutePoint {
   announce?: boolean;
 }
 
+/** Wire names shared with App RouteSegmentMode (FOLLOW_ROAD | FOLLOW_TRAIL | MANUAL_STRAIGHT). */
+export type NavRideRouteSegmentMode =
+  | "FOLLOW_ROAD"
+  | "FOLLOW_TRAIL"
+  | "MANUAL_STRAIGHT";
+
 export interface NavRideSegment {
   segmentId: string;
   startIndex: number;
@@ -64,6 +70,10 @@ export interface NavRideSegment {
   roadClass?: string | null;
   customColor?: string | null;
   profileOverride?: string | null;
+  /** Explicit per-segment routing behaviour (default FOLLOW_ROAD when absent — legacy GPX). */
+  routeSegmentMode?: NavRideRouteSegmentMode | null;
+  /** Provenance: routed graph vs manual straight vs imported track. */
+  geometrySource?: "routed" | "manual" | "track" | "unknown" | null;
   pathKind?: NavRidePathKind;
   snapStatus?: NavRideSnapStatus;
   cueIds?: string[];

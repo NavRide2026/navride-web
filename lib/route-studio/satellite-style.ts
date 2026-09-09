@@ -25,6 +25,7 @@ export function buildSatelliteStyleSync(): object {
           "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         ],
         tileSize: 256,
+        minzoom: 0,
         maxzoom: 19,
         attribution: ESRI_ATTRIB,
       },
@@ -32,9 +33,15 @@ export function buildSatelliteStyleSync(): object {
     },
     layers: [
       {
+        id: "background",
+        type: "background",
+        paint: { "background-color": "#12161C" },
+      },
+      {
         id: "sat-bg",
         type: "raster",
         source: "satellite",
+        maxzoom: 19,
       },
       {
         id: "sat-road-casing",

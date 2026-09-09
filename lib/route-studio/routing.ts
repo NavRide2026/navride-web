@@ -1,9 +1,25 @@
 import { haversineKm } from "./geo.ts";
+import type { RouteSegmentMode } from "./segment-routing-mode.ts";
 
 export type LngLat = [number, number];
 
 
 export type TransportMode = "walk" | "bike" | "moto" | "car";
+
+/** OSRM profile for trail preference (web proxy; app uses Valhalla offroad). */
+export function osrmProfileForSegment(
+  transport: TransportMode,
+  segmentMode: RouteSegmentMode = "FOLLOW_ROAD",
+): string {
+  if (segmentMode === "MANUAL_STRAIGHT") return "none";
+  if (segmentMode === "FOLLOW_TRAIL") {
+    // Prefer bike graph for trail-ish paths; walk stays foot.
+    if (transport === "walk") return "foot";
+    return "bike";
+  }
+  const modeDef = TRANSPORT_MODES.find((m) => m.id === transport);
+  return modeDef?.osrmProfile ?? "driving";
+}
 
 export const TRANSPORT_MODES: {
   id: TransportMode;
@@ -56,26 +72,32 @@ export type RouteResult = {
 export async function routeWaypoints(
   waypoints: LngLat[],
   mode: TransportMode,
+  segmentMode: RouteSegmentMode = "FOLLOW_ROAD",
 ): Promise<RouteResult> {
   if (waypoints.length < 2) {
     return { points: waypoints, ok: true, profile: "none" };
   }
 
+  if (segmentMode === "MANUAL_STRAIGHT") {
+    return { points: [...waypoints], ok: true, profile: "manual_straight" };
+  }
+
   const modeDef = TRANSPORT_MODES.find((m) => m.id === mode)!;
+  const osrmProfile = osrmProfileForSegment(mode, segmentMode);
   const coords = waypoints
     .map(([lng, lat]) => `${lng.toFixed(6)},${lat.toFixed(6)}`)
     .join(";");
 
   try {
     const res = await fetch(
-      `https://router.project-osrm.org/route/v1/${modeDef.osrmProfile}/${coords}?overview=full&geometries=geojson&steps=false`,
+      `https://router.project-osrm.org/route/v1/${osrmProfile}/${coords}?overview=full&geometries=geojson&steps=false`,
       { signal: AbortSignal.timeout(8000) },
     );
     if (!res.ok) {
       return {
         points: waypoints,
         ok: false,
-        profile: modeDef.osrmProfile,
+        profile: osrmProfile,
         reason: "network",
         message: `OSRM respondió ${res.status}`,
       };
@@ -83,21 +105,21 @@ export async function routeWaypoints(
     const data = await res.json();
     if (data.code === "Ok" && data.routes?.[0]?.geometry?.coordinates?.length > 0) {
       const pts = data.routes[0].geometry.coordinates as LngLat[];
-      return { points: pts, ok: true, profile: modeDef.osrmProfile };
+      return { points: pts, ok: true, profile: osrmProfile };
     }
     if (data.code === "NoRoute" || data.code === "NoSegment") {
       return {
         points: waypoints,
         ok: false,
-        profile: modeDef.osrmProfile,
+        profile: osrmProfile,
         reason: "mode_unreachable",
-        message: `Punto inalcanzable en modo ${modeDef.label}: no hay ruta OSRM hasta ahí.`,
+        message: `Punto inalcanzable (${modeDef.label}): no hay ruta hasta ahí.`,
       };
     }
     return {
       points: waypoints,
       ok: false,
-      profile: modeDef.osrmProfile,
+      profile: osrmProfile,
       reason: "no_route",
       message: data.message ?? "No se pudo calcular la ruta.",
     };
@@ -105,7 +127,7 @@ export async function routeWaypoints(
     return {
       points: waypoints,
       ok: false,
-      profile: modeDef.osrmProfile,
+      profile: osrmProfile,
       reason: "timeout",
       message: "Tiempo de espera agotado al calcular la ruta.",
     };
@@ -120,9 +142,13 @@ export async function snapClickToRoute(
   prev: LngLat | null,
   mode: TransportMode,
   maxSnapM = 25,
+  segmentMode: RouteSegmentMode = "FOLLOW_ROAD",
 ): Promise<{ snapped: LngLat; routeSegment: LngLat[] | null; rejectedFar: boolean }> {
   if (!prev) return { snapped: click, routeSegment: null, rejectedFar: false };
-  const result = await routeWaypoints([prev, click], mode);
+  if (segmentMode === "MANUAL_STRAIGHT") {
+    return { snapped: click, routeSegment: null, rejectedFar: false };
+  }
+  const result = await routeWaypoints([prev, click], mode, segmentMode);
   if (!result.ok || result.points.length < 2) {
     return { snapped: click, routeSegment: null, rejectedFar: false };
   }
