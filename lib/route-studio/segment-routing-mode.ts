@@ -16,7 +16,7 @@ export const ROUTE_SEGMENT_MODES: {
   {
     id: "FOLLOW_ROAD",
     label: "Seguir carretera",
-    hint: "Routing por red viaria. Sin ruta válida → error honesto (no recta falsa).",
+    hint: "Sigue la geometría OSM (carreteras, pistas, senderos). El perfil decide si es compatible.",
   },
   {
     id: "FOLLOW_TRAIL",

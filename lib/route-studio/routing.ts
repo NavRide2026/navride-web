@@ -31,26 +31,26 @@ export const TRANSPORT_MODES: {
     id: "walk",
     label: "Caminar",
     osrmProfile: "foot",
-    description: "Senderos y zonas peatonales cuando OSRM las conoce.",
+    description: "Red OSM a pie. El perfil aplica foot/access.",
   },
   {
     id: "bike",
     label: "Bici",
     osrmProfile: "bike",
-    description: "Ciclovías y carreteras accesibles en bici.",
+    description: "Red OSM en bici. cycleway/path según tags bicycle/foot.",
   },
   {
     id: "moto",
     label: "Moto",
     osrmProfile: "driving",
     description:
-      "Usa perfil OSRM driving (mismo que coche por ahora; modo separado para futuro).",
+      "Red OSM completa. Compatibilidad por motorcycle/motor_vehicle; no recorta path/track del grafo.",
   },
   {
     id: "car",
     label: "Coche",
     osrmProfile: "driving",
-    description: "Red viaria motorizada (perfil OSRM driving).",
+    description: "Red OSM completa. Compatibilidad por motorcar/motor_vehicle; superficie ≠ prohibición.",
   },
 ];
 
