@@ -77,6 +77,11 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  if (pathname.startsWith("/editor-gpx")) {
+    supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate")
+    supabaseResponse.headers.set("Pragma", "no-cache")
+  }
+
   return supabaseResponse
 }
 

@@ -1,4 +1,6 @@
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 import GpxEditor from "@/components/gpx/GpxEditor";
 import type { Metadata } from "next";
@@ -27,6 +29,7 @@ export default async function EditorGpxPage({ searchParams }: PageProps) {
           : "fixed inset-0 z-50 bg-[#050608] flex flex-col"
       }
       data-navride-embed={embedNavRideApp ? "navride-app" : undefined}
+      data-editor-network="osm-master-11400"
     >
       <GpxEditor embedNavRideApp={embedNavRideApp} />
     </div>
