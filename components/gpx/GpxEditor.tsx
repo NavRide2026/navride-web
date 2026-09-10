@@ -6,7 +6,7 @@ import {
   RotateCw, Loader2, AlertCircle, CheckCircle2, X,
   Navigation, Maximize2, Cloud, Smartphone, Link2,
   Layers, Palette, SlidersHorizontal, PanelRightClose, PanelRightOpen,
-  ChevronUp, ChevronDown, Crosshair, Upload,
+  ChevronUp, ChevronDown, Crosshair, Upload, Home, ArrowLeftRight, Repeat,
 } from "lucide-react";
 import {
   tryOpenNavRideApp,
@@ -22,11 +22,19 @@ import {
   type CompatPrompt,
 } from "@/components/gpx/RouteCompatibilityPanel";
 import { fetchWaysAround, fetchWaysAlongRoute } from "@/lib/route-studio/route-compatibility-overpass";
+import { compatibleWaysOnly, routeOnOsmNetwork, snapClickToOsmNetwork } from "@/lib/route-studio/editor-osm-network";
 import {
-  compatibleWaysOnly,
-  routeOnOsmNetwork,
-  snapClickToOsmNetwork,
-} from "@/lib/route-studio/editor-osm-network";
+  reverseLngLats,
+  roundTripLngLats,
+  rotateLoopStart,
+} from "@/lib/route-studio/gpx-route-ops";
+import {
+  POI_CATEGORIES,
+  fetchPoisBbox,
+  poiTileKey,
+  PoiTileStore,
+  type PoiCategory,
+} from "@/lib/route-studio/navride-poi";
 import { rankWaysNearClick } from "@/lib/route-studio/route-compatibility-snap";
 import {
   auditRouteGeometry,
@@ -136,13 +144,34 @@ type ImportDialogState = {
 };
 
 // ─── Map styles ───────────────────────────────────────────────────────────────
-type StyleId = "liberty" | "satellite" | "bright" | "positron";
+type StyleId = "liberty" | "satellite" | "bright" | "topo";
+
+const OPEN_TOPO_STYLE = {
+  version: 8,
+  name: "NavRide Topografico",
+  sources: {
+    opentopo: {
+      type: "raster",
+      tiles: [
+        "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+        "https://b.tile.opentopomap.org/{z}/{x}/{y}.png",
+        "https://c.tile.opentopomap.org/{z}/{x}/{y}.png",
+      ],
+      tileSize: 256,
+      attribution: "© OpenStreetMap, SRTM | © OpenTopoMap (CC-BY-SA)",
+    },
+  },
+  layers: [
+    { id: "background", type: "background", paint: { "background-color": "#e8e0d8" } },
+    { id: "opentopo", type: "raster", source: "opentopo", minzoom: 0, maxzoom: 17 },
+  ],
+};
 
 const MAP_STYLES: { id: StyleId; label: string; url: string | object }[] = [
-  { id: "liberty",   label: "Rutas",     url: "https://tiles.openfreemap.org/styles/liberty"   },
+  { id: "liberty",   label: "Carretera",  url: "https://tiles.openfreemap.org/styles/liberty"   },
+  { id: "topo",      label: "Topográfico", url: OPEN_TOPO_STYLE },
   { id: "satellite", label: "Satélite",  url: buildSatelliteStyleSync()                       },
   { id: "bright",    label: "Outdoor",   url: "https://tiles.openfreemap.org/styles/bright"    },
-  { id: "positron",  label: "Claro",     url: "https://tiles.openfreemap.org/styles/positron"  },
 ];
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -158,6 +187,8 @@ const LYR_USER_RING = "nav-user-ring";
 const SRC_COMPAT = "nav-compat";
 const LYR_COMPAT = "nav-lyr-compat";
 const LYR_COMPAT_MARK = "nav-lyr-compat-mark";
+const SRC_POI = "nav-poi";
+const LYR_POI = "nav-lyr-poi";
 // Route notes use SRC_ROUTE_NOTES / LYR_ROUTE_NOTES from route-notes-geojson.
 
 const COLORS = [
@@ -208,6 +239,13 @@ async function routeForMode(
     return { points: [...waypoints], ok: true };
   }
   const fetched = await fetchWaysAlongRoute(waypoints);
+  if (!fetched.ok) {
+    return {
+      points: [...waypoints],
+      ok: false,
+      message: "No se pudo calcular la ruta. El servicio de cartografía no está disponible.",
+    };
+  }
   const ways = fetched.ways;
   const out: LngLat[] = [];
   for (let i = 1; i < waypoints.length; i++) {
@@ -437,6 +475,7 @@ export default function GpxEditor({
   keptCompatIdsRef.current = keptCompatIds;
   const setCompatIssueRef = useRef(setCompatIssue);
   setCompatIssueRef.current = setCompatIssue;
+  const refreshPoisRef = useRef<() => void>(() => {});
   const gpxFileInputRef = useRef<HTMLInputElement>(null);
   const cuesRef = useRef<NavRideCue[]>([]);
   /** Preserved NavRide Route Capsule across open→edit→save (never silently drop). */
@@ -459,7 +498,11 @@ export default function GpxEditor({
   // Mobile / UI state
   const [drawerOpen,        setDrawerOpen]        = useState(false);
   const [styleMenuOpen,     setStyleMenuOpen]     = useState(false);
+  const [poiMenuOpen,       setPoiMenuOpen]       = useState(false);
+  const [poiCats,           setPoiCats]          = useState<Set<PoiCategory>>(() => new Set());
   const [colorPopoverSegId, setColorPopoverSegId] = useState<string | null>(null);
+  const poiStoreRef = useRef(new PoiTileStore());
+  const poiCatsRef = useRef<Set<PoiCategory>>(new Set());
 
   // Refs to avoid stale closures inside map handlers
   const segsRef      = useRef<Segment[]>([INIT_SEG]);
@@ -476,6 +519,7 @@ export default function GpxEditor({
   useEffect(() => { trackWidthRef.current = trackWidth; }, [trackWidth]);
   useEffect(() => { trackOpacityRef.current = trackOpacity; }, [trackOpacity]);
   useEffect(() => { mapStyleIdRef.current = mapStyleId; }, [mapStyleId]);
+  useEffect(() => { poiCatsRef.current = poiCats; }, [poiCats]);
   useEffect(() => { activeWptRef.current = activeWpt; }, [activeWpt]);
   useEffect(() => { insertModeRef.current = insertMode; }, [insertMode]);
   useEffect(() => { drawModeRef.current = drawMode; }, [drawMode]);
@@ -739,10 +783,10 @@ export default function GpxEditor({
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const setupLayers = (m: any) => {
-      [LYR_USER, LYR_USER_RING, LYR_ROUTE_NOTES, LYR_POINTS, LYR_COMPAT_MARK, LYR_COMPAT, LYR_LINES, LYR_GLOW, LYR_CASING].forEach(l => {
+      [LYR_USER, LYR_USER_RING, LYR_ROUTE_NOTES, LYR_POINTS, LYR_COMPAT_MARK, LYR_COMPAT, LYR_LINES, LYR_GLOW, LYR_CASING, LYR_POI].forEach(l => {
         if (m.getLayer(l)) m.removeLayer(l);
       });
-      [SRC_LINES, SRC_POINTS, SRC_USER, SRC_ROUTE_NOTES, SRC_COMPAT].forEach(s => {
+      [SRC_LINES, SRC_POINTS, SRC_USER, SRC_ROUTE_NOTES, SRC_COMPAT, SRC_POI].forEach(s => {
         if (m.getSource(s)) m.removeSource(s);
       });
 
@@ -762,6 +806,10 @@ export default function GpxEditor({
         data: buildRouteNotesGeoJSON(cuesRef.current, segsRef.current),
       });
       m.addSource(SRC_COMPAT, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      m.addSource(SRC_POI, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
@@ -827,6 +875,18 @@ export default function GpxEditor({
           "circle-color": ["get", "color"],
           "circle-stroke-color": "#111",
           "circle-stroke-width": 2,
+        },
+      });
+      m.addLayer({
+        id: LYR_POI,
+        type: "circle",
+        source: SRC_POI,
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "#f97316",
+          "circle-stroke-color": "#111",
+          "circle-stroke-width": 1.2,
+          "circle-opacity": 0.92,
         },
       });
 
@@ -895,6 +955,7 @@ export default function GpxEditor({
     const attachEvents = (m: any) => {
       if (eventsAttached) return;
       eventsAttached = true;
+      m.on("moveend", () => refreshPoisRef.current());
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       m.on("click", LYR_ROUTE_NOTES, (e: any) => {
@@ -1169,6 +1230,7 @@ export default function GpxEditor({
         }
         setupLayers(map);
         syncMap(segsRef.current);
+        refreshPoisRef.current();
         try {
           map.getSource(SRC_COMPAT)?.setData(
             auditToGeoJSON(compatAuditRef.current, keptCompatIdsRef.current, null),
@@ -1210,6 +1272,57 @@ export default function GpxEditor({
 
     return () => { cancelled = true; };
   }, [mapStyleId]);
+
+  const refreshPois = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady.current) return;
+    const cats = [...poiCatsRef.current];
+    if (cats.length === 0 || map.getZoom() < 11) {
+      try {
+        map.getSource(SRC_POI)?.setData({ type: "FeatureCollection", features: [] });
+      } catch { /* */ }
+      return;
+    }
+    const b = map.getBounds();
+    const gen = poiStoreRef.current.generation === 0
+      ? poiStoreRef.current.bump()
+      : poiStoreRef.current.generation;
+    void fetchPoisBbox(
+      cats,
+      b.getSouth(),
+      b.getWest(),
+      b.getNorth(),
+      b.getEast(),
+      gen,
+      poiStoreRef.current,
+    ).then((res) => {
+      if (poiStoreRef.current.isStale(res.generation)) return;
+      if (!res.ok) {
+        setRouteError((prev) => prev ?? "Puntos de interés no disponibles ahora. La ruta no se ha modificado.");
+        return;
+      }
+      const key = poiTileKey((b.getSouth() + b.getNorth()) / 2, (b.getWest() + b.getEast()) / 2);
+      poiStoreRef.current.put(key, res.pois, gen);
+      try {
+        map.getSource(SRC_POI)?.setData({
+          type: "FeatureCollection",
+          features: res.pois.map((p) => ({
+            type: "Feature",
+            properties: { id: p.id, category: p.category, name: p.name ?? p.category },
+            geometry: { type: "Point", coordinates: [p.lon, p.lat] },
+          })),
+        });
+      } catch { /* */ }
+    });
+  }, []);
+
+  useEffect(() => {
+    refreshPoisRef.current = refreshPois;
+  }, [refreshPois]);
+
+  useEffect(() => {
+    refreshPois();
+  }, [poiCats, refreshPois]);
 
   // Re-route only routed segments (FOLLOW_ROAD / FOLLOW_TRAIL) — never rewrite track / MANUAL_STRAIGHT.
   const rerouteAll = useCallback(async (mode: TransportMode) => {
@@ -1603,12 +1716,14 @@ export default function GpxEditor({
     if (!seg || seg.waypoints.length < 3) return;
     const closed: LngLat[] = [...seg.waypoints, seg.waypoints[0]];
     const closedKinds: WaypointKind[] = [...ensureWaypointKinds(seg), "via"];
+    const gen = ++routeGenerationRef.current;
     setRouting(true);
     setRouteError(null);
     const sm = parseRouteSegmentMode(
       seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
     );
     const routed = await routeForMode(closed, transportModeRef.current, sm);
+    if (gen !== routeGenerationRef.current) return;
     if (!routed.ok) setRouteError(routed.message ?? "No se pudo cerrar el bucle.");
     const upd = segsRef.current.map(s =>
       s.id === activeIdRef.current
@@ -1627,6 +1742,112 @@ export default function GpxEditor({
     syncMap(upd);
     pushHist(upd);
     setRouting(false);
+  }, [syncMap, pushHist]);
+
+  const applyActiveWaypoints = useCallback(async (nextWpts: LngLat[], reroute: boolean) => {
+    const aId = activeIdRef.current;
+    const seg = segsRef.current.find((s) => s.id === aId);
+    if (!seg) return;
+    const kinds = ensureWaypointKinds(seg);
+    const nextKinds = nextWpts.map((_, i) => kinds[Math.min(i, kinds.length - 1)] ?? "via");
+    const sm = parseRouteSegmentMode(
+      seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+    );
+    const gen = ++routeGenerationRef.current;
+    setRouting(reroute && isRoutedSegmentMode(sm) && nextWpts.length >= 2);
+    setRouteError(null);
+    let routedPts = reverseLngLats(seg.routePoints.length >= 2 ? seg.routePoints : nextWpts);
+    if (!reroute) {
+      routedPts = nextWpts;
+    } else if (isRoutedSegmentMode(sm) && nextWpts.length >= 2) {
+      const routed = await routeForMode(nextWpts, transportModeRef.current, sm);
+      if (gen !== routeGenerationRef.current) return;
+      if (!routed.ok) {
+        setRouteError(routed.message ?? "No se pudo recalcular la ruta.");
+        setRouting(false);
+        return;
+      }
+      routedPts = routed.points;
+    }
+    if (gen !== routeGenerationRef.current) return;
+    const upd = segsRef.current.map((s) =>
+      s.id === aId
+        ? {
+            ...s,
+            waypoints: nextWpts,
+            waypointKinds: nextKinds,
+            routePoints: routedPts,
+            routingFailed: false,
+          }
+        : s,
+    );
+    segsRef.current = upd;
+    setSegments(upd);
+    syncMap(upd);
+    pushHist(upd);
+    setRouting(false);
+  }, [syncMap, pushHist]);
+
+  const handleReverseRoute = useCallback(() => {
+    const seg = segsRef.current.find((s) => s.id === activeIdRef.current);
+    if (!seg || seg.waypoints.length < 2) return;
+    const next = reverseLngLats(seg.waypoints);
+    const kinds = [...ensureWaypointKinds(seg)].reverse();
+    const routed = reverseLngLats(seg.routePoints.length >= 2 ? seg.routePoints : seg.waypoints);
+    const upd = segsRef.current.map((s) =>
+      s.id === activeIdRef.current
+        ? { ...s, waypoints: next, waypointKinds: kinds, routePoints: routed }
+        : s,
+    );
+    segsRef.current = upd;
+    setSegments(upd);
+    syncMap(upd);
+    pushHist(upd);
+  }, [syncMap, pushHist]);
+
+  const handleRoundTrip = useCallback(() => {
+    const seg = segsRef.current.find((s) => s.id === activeIdRef.current);
+    if (!seg || seg.waypoints.length < 2) return;
+    const next = roundTripLngLats(seg.waypoints);
+    const kinds = ensureWaypointKinds(seg);
+    const nextKinds = [...kinds, ...[...kinds].reverse().slice(1)];
+    const base = seg.routePoints.length >= 2 ? seg.routePoints : seg.waypoints;
+    const routed = roundTripLngLats(base);
+    const upd = segsRef.current.map((s) =>
+      s.id === activeIdRef.current
+        ? { ...s, waypoints: next, waypointKinds: nextKinds, routePoints: routed }
+        : s,
+    );
+    segsRef.current = upd;
+    setSegments(upd);
+    syncMap(upd);
+    pushHist(upd);
+  }, [syncMap, pushHist]);
+
+  const handleBackToStart = useCallback(async () => {
+    const seg = segsRef.current.find((s) => s.id === activeIdRef.current);
+    if (!seg || seg.waypoints.length < 2) return;
+    const start = seg.waypoints[0];
+    const last = seg.waypoints[seg.waypoints.length - 1];
+    if (haversineKm(start, last) * 1000 < 25) return;
+    await applyActiveWaypoints([...seg.waypoints, start], true);
+  }, [applyActiveWaypoints]);
+
+  const handleRotateLoopStart = useCallback(() => {
+    const seg = segsRef.current.find((s) => s.id === activeIdRef.current);
+    if (!seg || seg.waypoints.length < 3) return;
+    const idx =
+      activeWptRef.current?.segId === seg.id ? activeWptRef.current.idx : 0;
+    const next = rotateLoopStart(seg.waypoints, idx);
+    const upd = segsRef.current.map((s) =>
+      s.id === activeIdRef.current
+        ? { ...s, waypoints: next, waypointKinds: ensureWaypointKinds({ ...s, waypoints: next }), routePoints: rotateLoopStart(s.routePoints.length >= 2 ? s.routePoints : next, idx) }
+        : s,
+    );
+    segsRef.current = upd;
+    setSegments(upd);
+    syncMap(upd);
+    pushHist(upd);
   }, [syncMap, pushHist]);
 
   const handleAddSeg = useCallback(() => {
@@ -2537,6 +2758,37 @@ export default function GpxEditor({
         </div>
       </div>
 
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs text-white/40 uppercase tracking-widest">Herramientas</span>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button type="button" onClick={handleReverseRoute}
+            disabled={!activeSeg || activeSeg.waypoints.length < 2}
+            className="rounded-lg border border-white/10 px-2 py-2 text-[11px] text-white/70 hover:text-white disabled:opacity-30 flex items-center gap-1.5">
+            <ArrowLeftRight size={12} /> Invertir
+          </button>
+          <button type="button" onClick={() => void handleBackToStart()}
+            disabled={!activeSeg || activeSeg.waypoints.length < 2}
+            className="rounded-lg border border-white/10 px-2 py-2 text-[11px] text-white/70 hover:text-white disabled:opacity-30 flex items-center gap-1.5">
+            <Home size={12} /> Volver al inicio
+          </button>
+          <button type="button" onClick={handleRoundTrip}
+            disabled={!activeSeg || activeSeg.waypoints.length < 2}
+            className="rounded-lg border border-white/10 px-2 py-2 text-[11px] text-white/70 hover:text-white disabled:opacity-30 flex items-center gap-1.5">
+            <Repeat size={12} /> Ida y vuelta
+          </button>
+          <button type="button" onClick={() => void handleCloseLoop()}
+            disabled={!activeSeg || activeSeg.waypoints.length < 3}
+            className="rounded-lg border border-white/10 px-2 py-2 text-[11px] text-white/70 hover:text-white disabled:opacity-30 flex items-center gap-1.5">
+            <RotateCw size={12} /> Cerrar circuito
+          </button>
+          <button type="button" onClick={handleRotateLoopStart}
+            disabled={!activeSeg || activeSeg.waypoints.length < 3}
+            className="col-span-2 rounded-lg border border-white/10 px-2 py-2 text-[11px] text-white/70 hover:text-white disabled:opacity-30">
+            Cambiar inicio del loop
+          </button>
+        </div>
+      </div>
+
       {/* Segments */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
@@ -3147,6 +3399,35 @@ export default function GpxEditor({
                     {s.label}
                   </button>
                 ))}
+                <div className="mt-1 pt-1 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setPoiMenuOpen(v => !v)}
+                    className="w-full text-left px-3 py-1.5 rounded-lg text-xs text-white/70 hover:text-white"
+                  >
+                    Puntos de interés
+                  </button>
+                  {poiMenuOpen && POI_CATEGORIES.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        poiStoreRef.current.bump();
+                        setPoiCats((prev) => {
+                          const n = new Set(prev);
+                          if (n.has(c.id)) n.delete(c.id);
+                          else n.add(c.id);
+                          return n;
+                        });
+                      }}
+                      className={`w-full text-left px-3 py-1 rounded-lg text-[11px] ${
+                        poiCats.has(c.id) ? "text-[#f97316]" : "text-white/50"
+                      }`}
+                    >
+                      {poiCats.has(c.id) ? "● " : "○ "}{c.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>

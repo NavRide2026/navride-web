@@ -29,7 +29,7 @@ export default async function EditorGpxPage({ searchParams }: PageProps) {
           : "fixed inset-0 z-50 bg-[#050608] flex flex-col"
       }
       data-navride-embed={embedNavRideApp ? "navride-app" : undefined}
-      data-editor-network="osm-master-11400"
+      data-editor-network="osm-master-11401"
     >
       <GpxEditor embedNavRideApp={embedNavRideApp} />
     </div>
