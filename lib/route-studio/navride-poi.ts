@@ -6,28 +6,27 @@ export type PoiCategory =
   | "restaurant"
   | "cafe"
   | "supermarket"
-  | "pharmacy"
-  | "hospital"
   | "toilets"
-  | "drinkingWater"
-  | "hotel"
-  | "camping";
+  | "drinkingWater";
 
 export const POI_CATEGORIES: { id: PoiCategory; label: string; filter: string }[] = [
+  { id: "parking", label: "Parking", filter: `node["amenity"="parking"]` },
   { id: "fuel", label: "Gasolinera", filter: `node["amenity"="fuel"]` },
   { id: "charging", label: "Carga eléctrica", filter: `node["amenity"="charging_station"]` },
-  { id: "parking", label: "Parking", filter: `node["amenity"="parking"]` },
-  { id: "workshop", label: "Taller", filter: `node["shop"~"^(car_repair|tyres|motorcycle)$"]` },
+  { id: "cafe", label: "Bar / cafetería", filter: `node["amenity"~"^(cafe|bar)$"]` },
   { id: "restaurant", label: "Restaurante", filter: `node["amenity"~"^(restaurant|fast_food)$"]` },
-  { id: "cafe", label: "Café / bar", filter: `node["amenity"~"^(cafe|bar)$"]` },
-  { id: "supermarket", label: "Supermercado", filter: `node["shop"~"^(supermarket|convenience)$"]` },
-  { id: "pharmacy", label: "Farmacia", filter: `node["amenity"="pharmacy"]` },
-  { id: "hospital", label: "Hospital", filter: `node["amenity"~"^(hospital|clinic)$"]` },
-  { id: "toilets", label: "Baños", filter: `node["amenity"="toilets"]` },
+  { id: "workshop", label: "Taller / reparación", filter: `node["shop"~"^(car_repair|tyres|motorcycle|bicycle)$"]` },
   { id: "drinkingWater", label: "Agua potable", filter: `node["amenity"="drinking_water"]` },
-  { id: "hotel", label: "Alojamiento", filter: `node["tourism"~"^(hotel|motel|guest_house)$"]` },
-  { id: "camping", label: "Camping", filter: `node["tourism"="camp_site"]` },
+  { id: "toilets", label: "Baños", filter: `node["amenity"="toilets"]` },
+  { id: "supermarket", label: "Tienda / súper", filter: `node["shop"~"^(supermarket|convenience)$"]` },
 ];
+
+export const POI_MODE_DEFAULTS: Record<string, PoiCategory[]> = {
+  car: ["parking", "fuel", "charging", "restaurant", "cafe", "workshop"],
+  moto: ["parking", "fuel", "restaurant", "cafe", "workshop"],
+  bike: ["restaurant", "cafe", "drinkingWater", "toilets", "workshop", "supermarket"],
+  walk: ["restaurant", "cafe", "drinkingWater", "toilets"],
+};
 
 export type NavRidePoi = {
   id: string;
@@ -177,19 +176,16 @@ export async function fetchPoisBbox(
 export function classifyPoiTags(tags: Record<string, string>): PoiCategory | null {
   const a = (tags.amenity ?? "").toLowerCase();
   const shop = (tags.shop ?? "").toLowerCase();
-  const tourism = (tags.tourism ?? "").toLowerCase();
   if (a === "fuel") return "fuel";
   if (a === "charging_station") return "charging";
   if (a === "parking") return "parking";
-  if (shop === "car_repair" || shop === "tyres" || shop === "motorcycle") return "workshop";
+  if (shop === "car_repair" || shop === "tyres" || shop === "motorcycle" || shop === "bicycle") {
+    return "workshop";
+  }
   if (a === "restaurant" || a === "fast_food") return "restaurant";
   if (a === "cafe" || a === "bar") return "cafe";
   if (shop === "supermarket" || shop === "convenience") return "supermarket";
-  if (a === "pharmacy") return "pharmacy";
-  if (a === "hospital" || a === "clinic") return "hospital";
   if (a === "toilets") return "toilets";
   if (a === "drinking_water") return "drinkingWater";
-  if (tourism === "hotel" || tourism === "motel" || tourism === "guest_house") return "hotel";
-  if (tourism === "camp_site") return "camping";
   return null;
 }

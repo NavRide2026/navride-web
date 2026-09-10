@@ -3,10 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Menu, X, LogOut, Gauge } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
-import { isNavRideAppEmbed } from "@/lib/route-studio/navride-editor-bridge";
 import {
   NAV_APP_LINKS as APP_LINKS,
   NAV_PUBLIC_LINKS as PUBLIC_LINKS,
@@ -16,10 +15,7 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const hideForAppEmbed =
-    pathname.startsWith("/editor-gpx") &&
-    isNavRideAppEmbed(searchParams.get("embed"));
+  const hideForAppEmbed = pathname.startsWith("/editor-gpx");
 
   useEffect(() => {
     if (hideForAppEmbed) return;

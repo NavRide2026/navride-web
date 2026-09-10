@@ -49,9 +49,9 @@ describe("gpx route ops", () => {
 
 describe("poi cache / dedup / stale / categories", () => {
   it("query only travel categories", () => {
-    const q = overpassPoiQuery(["fuel", "pharmacy"], 40.4, -3.72, 40.43, -3.69);
+    const q = overpassPoiQuery(["fuel", "parking"], 40.4, -3.72, 40.43, -3.69);
     assert.match(q, /fuel/);
-    assert.match(q, /pharmacy/);
+    assert.match(q, /parking/);
     assert.doesNotMatch(q, /attraction/);
     assert.doesNotMatch(q, /cemetery/);
   });

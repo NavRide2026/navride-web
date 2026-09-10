@@ -12,7 +12,8 @@
     "validate:product": "node scripts/validate-product-registry.mjs",
     "test:product": "node scripts/validate-product-registry.mjs && node --test tests/product/*.test.mjs",
     "test:route-studio": "node --experimental-strip-types --test tests/route-studio/*.test.mjs",
-    "test": "npm run test:product && npm run test:route-studio"
+    "test:gpx-editor": "node --experimental-strip-types --test tests/gpx-editor/*.test.mjs",
+    "test": "npm run test:product && npm run test:route-studio && npm run test:gpx-editor"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",

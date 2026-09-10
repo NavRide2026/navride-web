@@ -7,8 +7,8 @@ import type { Metadata } from "next";
 import { isNavRideAppEmbed } from "@/lib/route-studio/navride-editor-bridge";
 
 export const metadata: Metadata = {
-  title: "NavRide Route Studio",
-  description: "Crea rutas GPX con routing por modo, deshacer/rehacer y sync con la app NavRide.",
+  title: "Editor GPX NavRide",
+  description: "Editor GPX NavRide: mapa primero, perfiles coche/moto/bici/caminar, Route Doctor.",
 };
 
 type PageProps = {
@@ -29,7 +29,7 @@ export default async function EditorGpxPage({ searchParams }: PageProps) {
           : "fixed inset-0 z-50 bg-[#050608] flex flex-col"
       }
       data-navride-embed={embedNavRideApp ? "navride-app" : undefined}
-      data-editor-network="osm-master-11401"
+      data-editor-network="osm-master-editor-rebuild"
     >
       <GpxEditor embedNavRideApp={embedNavRideApp} />
     </div>

@@ -1,150 +1,56 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/refs, react-hooks/immutability, react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+
+/**
+ * NavRide GPX Editor — mapa primero.
+ * Core: lib/gpx-editor (anchors, undo, crop/split/merge, lossless GPX).
+ * Routing: red OSM maestra (Valhalla permanece en navegación App).
+ * No clona editores de terceros. No GraphHopper.
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Trash2, Undo2, Redo2, Download, MapPin, Plus,
-  RotateCw, Loader2, AlertCircle, CheckCircle2, X,
-  Navigation, Maximize2, Cloud, Smartphone, Link2,
-  Layers, Palette, SlidersHorizontal, PanelRightClose, PanelRightOpen,
-  ChevronUp, ChevronDown, Crosshair, Upload, Home, ArrowLeftRight, Repeat,
+  Undo2, Redo2, Download, Plus, Layers, Wrench,
+  Loader2, X, Crosshair, Upload, Search, ChevronUp, ChevronDown,
 } from "lucide-react";
-import {
-  tryOpenNavRideApp,
-  buildRouteDeepLinks,
-  copyRouteLink,
-} from "@/lib/gpx/saveRouteToCloud";
-import { RouteDoctorPanel } from "@/components/route-studio/capability-panels";
 import {
   CompatibilityPromptCard,
   CompatibilityAltPreview,
-  CompatibilityDataGapCard,
   RouteCompatibilityReview,
   type CompatPrompt,
 } from "@/components/gpx/RouteCompatibilityPanel";
 import { fetchWaysAround, fetchWaysAlongRoute } from "@/lib/route-studio/route-compatibility-overpass";
 import { compatibleWaysOnly, routeOnOsmNetwork, snapClickToOsmNetwork } from "@/lib/route-studio/editor-osm-network";
 import {
-  reverseLngLats,
-  roundTripLngLats,
-  rotateLoopStart,
-} from "@/lib/route-studio/gpx-route-ops";
-import {
   POI_CATEGORIES,
+  POI_MODE_DEFAULTS,
   fetchPoisBbox,
-  poiTileKey,
   PoiTileStore,
   type PoiCategory,
+  type NavRidePoi,
 } from "@/lib/route-studio/navride-poi";
-import { rankWaysNearClick } from "@/lib/route-studio/route-compatibility-snap";
 import {
   auditRouteGeometry,
-  auditToGeoJSON,
-  mergeTailAudit,
-  tailPolyline,
   type CompatibilityAudit,
   type CompatibilityIssue,
 } from "@/lib/route-studio/route-compatibility-audit";
-import { TrackColorPicker } from "@/components/route-studio/track-color-picker";
-import {
-  TRANSPORT_MODES,
-  type TransportMode,
-} from "@/lib/route-studio/routing";
-import {
-  ROUTE_SEGMENT_MODES,
-  DEFAULT_ROUTE_SEGMENT_MODE,
-  parseRouteSegmentMode,
-  labelForSegmentMode,
-  pathKindForSegmentMode,
-  isRoutedSegmentMode,
-  geometryFingerprint,
-  type RouteSegmentMode,
-} from "@/lib/route-studio/segment-routing-mode";
-import { analyzeRouteHealth } from "@/lib/route-studio/route-health";
-import { saveDraft, loadDraft, clearDraft } from "@/lib/route-studio/autosave";
-import { type EditorMode } from "@/lib/route-studio/mode-capabilities";
-import {
-  DEFAULT_TRACK_WIDTH,
-  DEFAULT_TRACK_OPACITY,
-  HISTORY_CAP,
-  casingWidth,
-  casingOpacity,
-  casingColor,
-  clampTrackWidth,
-  clampTrackOpacity,
-  ensureMinBrightness,
-} from "@/lib/route-studio/track-style";
-import {
-  buildSatelliteStyleSync,
-  buildSatelliteStyleFromLiberty,
-  SATELLITE_ATTRIBUTION,
-} from "@/lib/route-studio/satellite-style";
-import {
-  exportGpxWithExtensions,
-  parseGpxFile,
-  type RouteCapsule,
-} from "@/lib/route-studio/navride-route/gpx-codec";
-import {
-  createEmptyRoute,
-  toggleViaShaping,
-  type NavRideCue,
-  type NavRideCueSeverity,
-  type NavRidePointKind,
-  type NavRideRoute,
-} from "@/lib/route-studio/navride-route/types";
-import {
-  createCue,
-  cueSeverityLabel,
-  CUE_SEVERITY_LABELS_ES,
-} from "@/lib/route-studio/cues";
+import { type TransportMode } from "@/lib/route-studio/routing";
+import { buildSatelliteStyleSync } from "@/lib/route-studio/satellite-style";
+import { parseGpxFile, type RouteCapsule } from "@/lib/route-studio/navride-route/gpx-codec";
+import { createEmptyRoute, type NavRideRoute } from "@/lib/route-studio/navride-route/types";
 import {
   postToNavRideApp,
   registerAppToEditorHandler,
   newBridgeRequestId,
   type NavRideEditorBridgeMessage,
 } from "@/lib/route-studio/navride-editor-bridge";
-import {
-  SRC_ROUTE_NOTES,
-  LYR_ROUTE_NOTES,
-  buildRouteNotesGeoJSON,
-  routeNotesCirclePaint,
-  reprojectCuesOnTrack,
-} from "@/lib/route-studio/route-notes-geojson";
-import {
-  NOTE_OFF_TRACK_METERS,
-  flattenRouteLngLats,
-  progressMNearestOnPolyline,
-} from "@/lib/route-studio/geo";
+import { emptyDocument, GpxEditorEngine, visibleAnchors, lngLatsOf, allPoints, computeStats, elevationProfile, estimateSimplify, nearestOnPolyline, pointAtDistanceM, type GpxDocument, type ToolId, type TraceMode } from "@/lib/gpx-editor";
+import { serializeGpx } from "@/lib/gpx-editor/serialize";
+import type { LngLat } from "@/lib/gpx-editor/geo";
+import type { OsmWay } from "@/lib/route-studio/route-compatibility-snap";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-type LngLat = [number, number];
-type WaypointKind = Extract<NavRidePointKind, "via" | "shaping">;
-
-interface Segment {
-  id: string;
-  name: string;
-  color: string;
-  waypoints: LngLat[];
-  /** Parallel to waypoints — via (default) or shaping. */
-  waypointKinds?: WaypointKind[];
-  routePoints: LngLat[];
-  routingFailed?: boolean;
-  absurdDetour?: boolean;
-  /** routed = follow paths; freehand = trazado libre; track = imported GPX authority. */
-  pathKind?: "routed" | "freehand" | "track";
-  /** Canonical segment mode (FOLLOW_ROAD | FOLLOW_TRAIL | MANUAL_STRAIGHT). Default FOLLOW_ROAD. */
-  routeSegmentMode?: RouteSegmentMode;
-}
-
-type ImportDialogState = {
-  issues: string[];
-  geometry: { lat: number; lon: number; ele?: number | null }[];
-  extensions: NavRideRoute | null;
-  capsule: RouteCapsule | null;
-  fileName: string;
-};
-
-// ─── Map styles ───────────────────────────────────────────────────────────────
-type StyleId = "liberty" | "satellite" | "bright" | "topo";
+type StyleId = "liberty" | "satellite" | "topo" | "bright";
 
 const OPEN_TOPO_STYLE = {
   version: 8,
@@ -167,247 +73,50 @@ const OPEN_TOPO_STYLE = {
   ],
 };
 
-const MAP_STYLES: { id: StyleId; label: string; url: string | object }[] = [
-  { id: "liberty",   label: "Carretera",  url: "https://tiles.openfreemap.org/styles/liberty"   },
-  { id: "topo",      label: "Topográfico", url: OPEN_TOPO_STYLE },
-  { id: "satellite", label: "Satélite",  url: buildSatelliteStyleSync()                       },
-  { id: "bright",    label: "Outdoor",   url: "https://tiles.openfreemap.org/styles/bright"    },
+const MAP_STYLES: { id: StyleId; label: string }[] = [
+  { id: "liberty", label: "Carretera" },
+  { id: "topo", label: "Topográfico" },
+  { id: "satellite", label: "Satélite" },
+  { id: "bright", label: "Outdoor / caminos" },
 ];
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const SRC_LINES  = "nav-lines";
-const SRC_POINTS = "nav-points";
-const SRC_USER   = "nav-user";
-const LYR_CASING = "nav-casing";
-const LYR_GLOW   = "nav-glow";
-const LYR_LINES  = "nav-lyr-lines";
-const LYR_POINTS = "nav-lyr-points";
-const LYR_USER   = "nav-user-dot";
-const LYR_USER_RING = "nav-user-ring";
-const SRC_COMPAT = "nav-compat";
-const LYR_COMPAT = "nav-lyr-compat";
-const LYR_COMPAT_MARK = "nav-lyr-compat-mark";
-const SRC_POI = "nav-poi";
-const LYR_POI = "nav-lyr-poi";
-// Route notes use SRC_ROUTE_NOTES / LYR_ROUTE_NOTES from route-notes-geojson.
+function styleUrl(id: StyleId): string | object {
+  if (id === "liberty") return "https://tiles.openfreemap.org/styles/liberty";
+  if (id === "topo") return OPEN_TOPO_STYLE;
+  if (id === "satellite") return buildSatelliteStyleSync();
+  return "https://tiles.openfreemap.org/styles/bright";
+}
 
-const COLORS = [
-  { label: "Naranja", value: "#f97316", desc: "General"            },
-  { label: "Rojo",    value: "#ef4444", desc: "Trialera / Difícil" },
-  { label: "Verde",   value: "#22c55e", desc: "Pista rápida"       },
-  { label: "Azul",    value: "#3b82f6", desc: "Asfalto"            },
-  { label: "Amarillo",value: "#eab308", desc: "Pista media"        },
-  { label: "Morado",  value: "#a855f7", desc: "Single track"       },
-  { label: "Blanco",  value: "#e5e7eb", desc: "Marcador"           },
+const SRC_LINE = "nr-gpx-line";
+const SRC_ANCHOR = "nr-gpx-anchors";
+const SRC_WPT = "nr-gpx-wpt";
+const SRC_POI = "nr-gpx-poi";
+const SRC_HL = "nr-gpx-hl";
+const SRC_MARK = "nr-gpx-mark";
+const SRC_ARROWS = "nr-gpx-arrows";
+const SRC_COMPAT = "nr-gpx-compat";
+const SRC_USER = "nr-gpx-user";
+
+const PROFILES: { id: TransportMode; label: string; icon: string }[] = [
+  { id: "car", label: "COCHE", icon: "🚗" },
+  { id: "moto", label: "MOTO", icon: "🏍" },
+  { id: "bike", label: "BICI", icon: "🚲" },
+  { id: "walk", label: "CAMINAR", icon: "🚶" },
 ];
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function uid(): string { return Math.random().toString(36).slice(2, 9); }
-
-function haversineKm(a: LngLat, b: LngLat): number {
-  const R = 6371;
-  const dLat = ((b[1] - a[1]) * Math.PI) / 180;
-  const dLon = ((b[0] - a[0]) * Math.PI) / 180;
-  const la1  = (a[1] * Math.PI) / 180;
-  const la2  = (b[1] * Math.PI) / 180;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.asin(Math.sqrt(h));
+function exportGpx(doc: GpxDocument, capsule: RouteCapsule | null): string {
+  return serializeGpx({ ...doc, capsule: capsule ?? doc.capsule });
 }
 
-function segKm(pts: LngLat[]): number {
-  let d = 0;
-  for (let i = 1; i < pts.length; i++) d += haversineKm(pts[i - 1], pts[i]);
-  return d;
-}
-
-function totalKm(segs: Segment[]): number {
-  return segs.reduce(
-    (a, s) => a + segKm(s.routePoints.length >= 2 ? s.routePoints : s.waypoints),
-    0,
-  );
-}
-
-async function routeForMode(
-  waypoints: LngLat[],
-  mode: TransportMode,
-  segmentMode: RouteSegmentMode = DEFAULT_ROUTE_SEGMENT_MODE,
-): Promise<{ points: LngLat[]; ok: boolean; message?: string; absurd?: boolean }> {
-  if (segmentMode === "MANUAL_STRAIGHT") {
-    return { points: [...waypoints], ok: true };
-  }
-  if (waypoints.length < 2) {
-    return { points: [...waypoints], ok: true };
-  }
-  const fetched = await fetchWaysAlongRoute(waypoints);
-  if (!fetched.ok) {
-    return {
-      points: [...waypoints],
-      ok: false,
-      message: "No se pudo calcular la ruta. El servicio de cartografía no está disponible.",
-    };
-  }
-  const ways = fetched.ways;
-  const out: LngLat[] = [];
-  for (let i = 1; i < waypoints.length; i++) {
-    const seg = routeOnOsmNetwork(ways, waypoints[i - 1], waypoints[i], mode);
-    if (out.length === 0) out.push(...seg);
-    else out.push(...seg.slice(1));
-  }
-  const pts = out.length >= 2 ? out : [...waypoints];
-  return { points: pts, ok: true };
-}
-
-function buildGeoJSON(segs: Segment[], activeWpt: { segId: string; idx: number } | null) {
-  // Solo dibujar geometría enrutada OK — nunca línea recta falsa como éxito
-  const lines = segs
-    .filter(s => s.routePoints.length >= 2 && !s.routingFailed)
-    .map(s => ({
-      type: "Feature" as const,
-      properties: { color: s.color },
-      geometry: {
-        type: "LineString" as const,
-        coordinates: s.routePoints,
-      },
-    }));
-
-  const points = segs.flatMap(s =>
-    s.waypoints.map((p, pi) => ({
-      type: "Feature" as const,
-      properties: {
-        color: s.color,
-        segId: s.id,
-        ptIdx: pi,
-        active: activeWpt?.segId === s.id && activeWpt.idx === pi ? 1 : 0,
-      },
-      geometry: { type: "Point" as const, coordinates: p },
-    })),
-  );
-
-  return {
-    lines:  { type: "FeatureCollection" as const, features: lines  },
-    points: { type: "FeatureCollection" as const, features: points },
-  };
-}
-
-function ensureWaypointKinds(seg: Segment): WaypointKind[] {
-  const kinds = seg.waypointKinds ? [...seg.waypointKinds] : [];
-  while (kinds.length < seg.waypoints.length) kinds.push("via");
-  return kinds.slice(0, seg.waypoints.length);
-}
-
-function buildRouteJson(
-  segs: Segment[],
-  title: string,
-  cues: NavRideCue[],
-  trackPts: LngLat[],
-): NavRideRoute {
-  const viaPoints = segs.flatMap((s) => {
-    const kinds = ensureWaypointKinds(s);
-    return s.waypoints
-      .map((p, i) => ({ p, kind: kinds[i] ?? "via", i }))
-      .filter((x) => x.kind === "via")
-      .map(({ p, i }) => ({
-        pointId: `${s.id}-via-${i}`,
-        kind: "via" as const,
-        lat: p[1],
-        lon: p[0],
-      }));
-  });
-  const shapingPoints = segs.flatMap((s) => {
-    const kinds = ensureWaypointKinds(s);
-    return s.waypoints
-      .map((p, i) => ({ p, kind: kinds[i] ?? "via", i }))
-      .filter((x) => x.kind === "shaping")
-      .map(({ p, i }) => ({
-        pointId: `${s.id}-shp-${i}`,
-        kind: "shaping" as const,
-        lat: p[1],
-        lon: p[0],
-      }));
-  });
-  const geometryPts = trackPts.map(([lon, lat]) => ({ lat, lon }));
-  const segments = segs.map((s, si) => {
-    const start = segs
-      .slice(0, si)
-      .reduce(
-        (a, x) =>
-          a + (x.routePoints.length >= 2 && !x.routingFailed ? x.routePoints.length : 0),
-        0,
-      );
-    const len =
-      s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints.length : 0;
-    return {
-      segmentId: s.id,
-      name: s.name,
-      startIndex: start,
-      endIndex: Math.max(start, start + Math.max(0, len - 1)),
-      customColor: s.color,
-      pathKind: (s.pathKind ?? pathKindForSegmentMode(
-        parseRouteSegmentMode(s.routeSegmentMode),
-      )) as "routed" | "freehand" | "track" | "unknown",
-      routeSegmentMode: parseRouteSegmentMode(
-        s.routeSegmentMode ??
-          (s.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
-      ),
-      geometrySource:
-        parseRouteSegmentMode(s.routeSegmentMode) === "MANUAL_STRAIGHT" ||
-        s.pathKind === "freehand"
-          ? ("manual" as const)
-          : s.pathKind === "track"
-            ? ("track" as const)
-            : ("routed" as const),
-      snapStatus: s.routingFailed ? ("unmatched" as const) : ("matched" as const),
-      cueIds: cues.filter((c) => c.segmentId === s.id).map((c) => c.cueId),
-    };
-  });
+function buildRouteJson(doc: GpxDocument, title: string, routeId?: string | null): NavRideRoute {
+  const pts = allPoints(doc);
   return createEmptyRoute({
-    routeId: `web-${segs[0]?.id ?? uid()}`,
+    routeId: routeId || `web-${Date.now()}`,
     name: title,
-    geometry: { points: geometryPts, segmentBreaks: [] },
-    segments,
-    viaPoints,
-    shapingPoints,
-    cues,
-    styles: segs.map((s) => ({
-      styleId: `style-${s.id}`,
-      scope: "segment" as const,
-      segmentId: s.id,
-      color: s.color,
-    })),
-    offlineRequirements: {},
-    metadata: { source: "web-route-studio" },
+    geometry: { points: pts.map((p) => ({ lat: p.lat, lon: p.lon, ele: p.ele })) },
+    routeProfile: "moto",
   });
 }
-
-function exportGpx(
-  segs: Segment[],
-  title: string,
-  cues: NavRideCue[] = [],
-  capsule?: RouteCapsule | null,
-): string {
-  const pts = segs.flatMap((s) =>
-    s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints : [],
-  );
-  const trackPoints = pts.map(([lon, lat]) => ({ lat, lon }));
-  const routeJson = buildRouteJson(segs, title, cues, pts);
-  return exportGpxWithExtensions(routeJson, title, trackPoints, capsule);
-}
-
-function mkSeg(color = COLORS[0].value): Segment {
-  return {
-    id: uid(),
-    name: "Segmento",
-    color: ensureMinBrightness(color),
-    waypoints: [],
-    waypointKinds: [],
-    routePoints: [],
-    routeSegmentMode: DEFAULT_ROUTE_SEGMENT_MODE,
-    pathKind: "routed",
-  };
-}
-
-// ─── Component ────────────────────────────────────────────────────────────────
-const INIT_SEG = mkSeg();
 
 export default function GpxEditor({
   embedNavRideApp = false,
@@ -415,3150 +124,1002 @@ export default function GpxEditor({
   embedNavRideApp?: boolean;
 }) {
   const mapContainer = useRef<HTMLDivElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mapRef   = useRef<any>(null);
-  const mapReady = useRef(false);
-
-  const [segments,   setSegments]   = useState<Segment[]>([INIT_SEG]);
-  const [activeId,   setActiveId]   = useState<string>(INIT_SEG.id);
-  const [mapStyleId, setMapStyleId] = useState<StyleId>("liberty");
-  const [routeTitle, setRouteTitle] = useState("Mi ruta NavRide");
-  const [routing,    setRouting]    = useState(false);
-  const [histIdx,    setHistIdx]    = useState(0);
-  const [histLen,    setHistLen]    = useState(1);
-  const [uploading,  setUploading]  = useState(false);
-  const [saving,     setSaving]     = useState(false);
-  const [uploadMsg,  setUploadMsg]  = useState<{ ok: boolean; text: string } | null>(null);
-  const [savedRouteId, setSavedRouteId] = useState<string | null>(null);
-  const [savedSignature, setSavedSignature] = useState("");
-  const [transportMode, setTransportMode] = useState<TransportMode>("moto");
-  const [editorMode, setEditorMode] = useState<EditorMode>("simple");
-  const [routeError, setRouteError] = useState<string | null>(null);
-  const [locating, setLocating] = useState(false);
-  const [draftBanner, setDraftBanner] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    const draft = loadDraft();
-    if (draft?.segments && Array.isArray(draft.segments)) {
-      return `Borrador del ${new Date(draft.savedAt).toLocaleString("es-ES")}`;
-    }
-    return null;
-  });
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activeWpt, setActiveWpt] = useState<{ segId: string; idx: number } | null>(null);
-  const [trackWidth, setTrackWidth] = useState(DEFAULT_TRACK_WIDTH);
-  const [trackOpacity, setTrackOpacity] = useState(DEFAULT_TRACK_OPACITY);
-  const [userLngLat, setUserLngLat] = useState<LngLat | null>(null);
-  const [insertMode, setInsertMode] = useState(false);
-  const [cues, setCues] = useState<NavRideCue[]>([]);
-  const [selectedCueId, setSelectedCueId] = useState<string | null>(null);
-  const [cueDraftSeverity, setCueDraftSeverity] = useState<NavRideCueSeverity>("attention");
-  const [cueDraftMessage, setCueDraftMessage] = useState("");
-  const [placeNotePending, setPlaceNotePending] = useState(false);
-  const [drawMode, setDrawMode] = useState<RouteSegmentMode>(DEFAULT_ROUTE_SEGMENT_MODE);
-  const [importDialog, setImportDialog] = useState<ImportDialogState | null>(null);
-  const [compatPrompt, setCompatPrompt] = useState<CompatPrompt | null>(null);
-  const [compatAudit, setCompatAudit] = useState<CompatibilityAudit | null>(null);
-  const [compatIssue, setCompatIssue] = useState<CompatibilityIssue | null>(null);
-  const [compatLoading, setCompatLoading] = useState(false);
-  const [compatFindingAlt, setCompatFindingAlt] = useState(false);
-  const [compatAltLine, setCompatAltLine] = useState<LngLat[] | null>(null);
-  const [compatAltVia, setCompatAltVia] = useState<LngLat | null>(null);
-  const [compatDataGap, setCompatDataGap] = useState<LngLat | null>(null);
-  const [keptCompatIds, setKeptCompatIds] = useState<Set<string>>(() => new Set());
-  const setCompatPromptRef = useRef(setCompatPrompt);
-  setCompatPromptRef.current = setCompatPrompt;
-  const compatPlacePointRef = useRef<(pt: LngLat) => Promise<void>>(async () => {});
-  const scheduleLiveAuditRef = useRef<() => void>(() => {});
-  const compatAuditRef = useRef<CompatibilityAudit | null>(null);
-  compatAuditRef.current = compatAudit;
-  const keptCompatIdsRef = useRef(keptCompatIds);
-  keptCompatIdsRef.current = keptCompatIds;
-  const setCompatIssueRef = useRef(setCompatIssue);
-  setCompatIssueRef.current = setCompatIssue;
-  const refreshPoisRef = useRef<() => void>(() => {});
-  const gpxFileInputRef = useRef<HTMLInputElement>(null);
-  const cuesRef = useRef<NavRideCue[]>([]);
-  /** Preserved NavRide Route Capsule across open→edit→save (never silently drop). */
+  const mapRef = useRef<any>(null);
+  const engineRef = useRef(new GpxEditorEngine());
   const capsuleRef = useRef<RouteCapsule | null>(null);
-  const pendingLocateReqRef = useRef<string | null>(null);
-  const drawModeRef = useRef<RouteSegmentMode>(DEFAULT_ROUTE_SEGMENT_MODE);
-  const placeNotePendingRef = useRef(false);
-  const routeGenerationRef = useRef(0);
-  const cueDraftMessageRef = useRef("");
-  const cueDraftSeverityRef = useRef<NavRideCueSeverity>("attention");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const poiStore = useRef(new PoiTileStore());
+  const [doc, setDoc] = useState(() => emptyDocument());
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const redraw = useCallback(() => {
+    const e = engineRef.current;
+    setDoc(e.snapshot());
+    setCanUndo(e.canUndo);
+    setCanRedo(e.canRedo);
+  }, []);
 
-  const transportModeRef = useRef<TransportMode>("moto");
-  const editorModeRef = useRef<EditorMode>("simple");
-  const trackWidthRef = useRef(DEFAULT_TRACK_WIDTH);
-  const trackOpacityRef = useRef(DEFAULT_TRACK_OPACITY);
-  const mapStyleIdRef = useRef<StyleId>("liberty");
-  const activeWptRef = useRef<{ segId: string; idx: number } | null>(null);
-  const insertModeRef = useRef(false);
-
-  // Mobile / UI state
-  const [drawerOpen,        setDrawerOpen]        = useState(false);
-  const [styleMenuOpen,     setStyleMenuOpen]     = useState(false);
-  const [poiMenuOpen,       setPoiMenuOpen]       = useState(false);
-  const [poiCats,           setPoiCats]          = useState<Set<PoiCategory>>(() => new Set());
-  const [colorPopoverSegId, setColorPopoverSegId] = useState<string | null>(null);
-  const poiStoreRef = useRef(new PoiTileStore());
-  const poiCatsRef = useRef<Set<PoiCategory>>(new Set());
-
-  // Refs to avoid stale closures inside map handlers
-  const segsRef      = useRef<Segment[]>([INIT_SEG]);
-  const activeIdRef  = useRef<string>(INIT_SEG.id);
-  const histRef      = useRef<Segment[][]>([[INIT_SEG]]);
-  const histIdxRef   = useRef(0);
-  const styleChangingRef = useRef(false);
-
-  useEffect(() => { segsRef.current = segments; },   [segments]);
-  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
-  useEffect(() => { cuesRef.current = cues; }, [cues]);
-  useEffect(() => { transportModeRef.current = transportMode; }, [transportMode]);
-  useEffect(() => { editorModeRef.current = editorMode; }, [editorMode]);
-  useEffect(() => { trackWidthRef.current = trackWidth; }, [trackWidth]);
-  useEffect(() => { trackOpacityRef.current = trackOpacity; }, [trackOpacity]);
-  useEffect(() => { mapStyleIdRef.current = mapStyleId; }, [mapStyleId]);
-  useEffect(() => { poiCatsRef.current = poiCats; }, [poiCats]);
-  useEffect(() => { activeWptRef.current = activeWpt; }, [activeWpt]);
-  useEffect(() => { insertModeRef.current = insertMode; }, [insertMode]);
-  useEffect(() => { drawModeRef.current = drawMode; }, [drawMode]);
-  useEffect(() => { placeNotePendingRef.current = placeNotePending; }, [placeNotePending]);
-  useEffect(() => { cueDraftMessageRef.current = cueDraftMessage; }, [cueDraftMessage]);
-  useEffect(() => { cueDraftSeverityRef.current = cueDraftSeverity; }, [cueDraftSeverity]);
+  const [title, setTitle] = useState("Mi ruta");
+  const [mode, setMode] = useState<TransportMode>("moto");
+  const [trace, setTrace] = useState<TraceMode>("FOLLOW_WAYS");
+  const [mapStyleId, setMapStyleId] = useState<StyleId>("liberty");
+  const [panel, setPanel] = useState<"none" | "tools" | "layers" | "poi" | "tracks">("none");
+  const [tool, setTool] = useState<ToolId>("none");
+  const [routing, setRouting] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [prompt, setPrompt] = useState<CompatPrompt | null>(null);
+  const [altPreview, setAltPreview] = useState<LngLat[] | null>(null);
+  const [findingAlt, setFindingAlt] = useState(false);
+  const [audit, setAudit] = useState<CompatibilityAudit | null>(null);
+  const [crop, setCrop] = useState<[number, number] | null>(null);
+  const [simplify, setSimplify] = useState(12);
+  const [poiOn, setPoiOn] = useState(false);
+  const [poiCats, setPoiCats] = useState<PoiCategory[]>([]);
+  const [pois, setPois] = useState<NavRidePoi[]>([]);
+  const [poiPick, setPoiPick] = useState<NavRidePoi | null>(null);
+  const [showArrows, setShowArrows] = useState(false);
+  const [showMarks, setShowMarks] = useState(false);
+  const [pitch3d, setPitch3d] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(true);
+  const [hlDistM, setHlDistM] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [savedRouteId, setSavedRouteId] = useState<string | null>(null);
+  const [selectedIssue, setSelectedIssue] = useState<CompatibilityIssue | null>(null);
+  const [wptEdit, setWptEdit] = useState<{ id: string; name: string; desc: string } | null>(null);
+  const zoomRef = useRef(12);
+  const waysCache = useRef<OsmWay[]>([]);
+  const pendingClick = useRef<LngLat | null>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      saveDraft({
-        savedAt: new Date().toISOString(),
-        routeTitle,
-        transportMode,
-        editorMode,
-        segments,
-        trackColor: segments[0]?.color,
-      });
-    }, 1500);
-    return () => clearTimeout(t);
-  }, [segments, routeTitle, transportMode, editorMode]);
+    engineRef.current.mode = mode;
+    engineRef.current.followRoads = trace;
+    engineRef.current.doc.name = title;
+  }, [mode, trace, title]);
 
-  // ── Map sync ──
-  const syncMap = useCallback((segs: Segment[], wptSel?: { segId: string; idx: number } | null) => {
-    const map = mapRef.current;
-    if (!map || !mapReady.current) return;
-    const { lines, points } = buildGeoJSON(segs, wptSel === undefined ? activeWptRef.current : wptSel);
-    try {
-      map.getSource(SRC_LINES)?.setData(lines);
-      map.getSource(SRC_POINTS)?.setData(points);
-    } catch { /* style change in progress */ }
-  }, []);
+  const stats = computeStats(doc, crop ? { startM: crop[0], endM: crop[1] } : null);
+  const profile = elevationProfile(doc, 40);
+  const multi = doc.tracks.length > 1 || doc.tracks[0]?.segments.length > 1;
+  const simEst = estimateSimplify(doc, simplify);
 
-  const syncCompatLayers = useCallback((
-    audit: CompatibilityAudit | null = compatAuditRef.current,
-    alt: LngLat[] | null = null,
-  ) => {
-    const map = mapRef.current;
-    if (!map || !mapReady.current) return;
-    try {
-      map.getSource(SRC_COMPAT)?.setData(
-        auditToGeoJSON(audit, keptCompatIdsRef.current, alt),
-      );
-    } catch { /* */ }
-  }, []);
-
-  const applyTrackPaint = useCallback(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady.current) return;
-    const sat = mapStyleIdRef.current === "satellite";
-    const w = trackWidthRef.current;
-    const o = trackOpacityRef.current;
-    try {
-      if (map.getLayer(LYR_CASING)) {
-        map.setPaintProperty(LYR_CASING, "line-width", casingWidth(w));
-        map.setPaintProperty(LYR_CASING, "line-opacity", casingOpacity(o, sat));
-        map.setPaintProperty(LYR_CASING, "line-color", casingColor(sat));
-      }
-      if (map.getLayer(LYR_GLOW)) {
-        map.setPaintProperty(LYR_GLOW, "line-width", w * 2.8);
-        map.setPaintProperty(LYR_GLOW, "line-opacity", Math.min(0.35, o * 0.28));
-      }
-      if (map.getLayer(LYR_LINES)) {
-        map.setPaintProperty(LYR_LINES, "line-width", w);
-        map.setPaintProperty(LYR_LINES, "line-opacity", o);
-      }
-    } catch { /* */ }
-  }, []);
-
-  useEffect(() => { syncMap(segments); }, [segments, syncMap, activeWpt]);
-  useEffect(() => {
-    syncCompatLayers(compatAudit, compatAltLine);
-  }, [compatAudit, compatAltLine, keptCompatIds, syncCompatLayers]);
-  useEffect(() => { applyTrackPaint(); }, [trackWidth, trackOpacity, mapStyleId, applyTrackPaint]);
-
-  const syncUserMarker = useCallback((ll: LngLat | null) => {
-    const map = mapRef.current;
-    if (!map || !mapReady.current) return;
-    const data = {
-      type: "FeatureCollection" as const,
-      features: ll
-        ? [{
-            type: "Feature" as const,
-            properties: {},
-            geometry: { type: "Point" as const, coordinates: ll },
-          }]
+  const syncMap = useCallback(() => {
+    const m = mapRef.current;
+    if (!m) return;
+    const line = lngLatsOf(doc);
+    const fc = {
+      type: "FeatureCollection",
+      features: line.length >= 2
+        ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line } }]
         : [],
     };
-    try {
-      map.getSource(SRC_USER)?.setData(data);
-    } catch { /* */ }
-  }, []);
+    const anchors = visibleAnchors(doc, zoomRef.current);
+    const afc = {
+      type: "FeatureCollection",
+      features: anchors.map((a) => ({
+        type: "Feature",
+        properties: { ti: a.trackIndex, si: a.segmentIndex, pi: a.pointIndex },
+        geometry: { type: "Point", coordinates: [a.lon, a.lat] },
+      })),
+    };
+    const wfc = {
+      type: "FeatureCollection",
+      features: doc.waypoints.map((w) => ({
+        type: "Feature",
+        properties: { id: w.id, name: w.name },
+        geometry: { type: "Point", coordinates: [w.lon, w.lat] },
+      })),
+    };
+    const src = m.getSource(SRC_LINE);
+    if (src) src.setData(fc);
+    const as = m.getSource(SRC_ANCHOR);
+    if (as) as.setData(afc);
+    const ws = m.getSource(SRC_WPT);
+    if (ws) ws.setData(wfc);
 
-  const syncRouteNotes = useCallback((
-    nextCues: NavRideCue[] = cuesRef.current,
-    nextSegs: Segment[] = segsRef.current,
-  ) => {
-    const map = mapRef.current;
-    if (!map || !mapReady.current) return;
-    const data = buildRouteNotesGeoJSON(nextCues, nextSegs);
-    try {
-      map.getSource(SRC_ROUTE_NOTES)?.setData(data);
-    } catch { /* */ }
-  }, []);
-
-  useEffect(() => { syncUserMarker(userLngLat); }, [userLngLat, syncUserMarker]);
-  useEffect(() => { syncRouteNotes(cues, segments); }, [cues, segments, syncRouteNotes]);
-
-  // ── History ──
-  const pushHist = useCallback((segs: Segment[]) => {
-    const trimmed = histRef.current.slice(0, histIdxRef.current + 1);
-    let h = [...trimmed, JSON.parse(JSON.stringify(segs))];
-    if (h.length > HISTORY_CAP) {
-      h = h.slice(h.length - HISTORY_CAP);
+    const marks: { type: string; properties: Record<string, string>; geometry: { type: string; coordinates: number[] } }[] = [];
+    if (showMarks && line.length >= 2) {
+      const total = stats.distanceM;
+      for (let km = 1000; km < total; km += 1000) {
+        const p = pointAtDistanceM(line, km);
+        if (p) {
+          marks.push({
+            type: "Feature",
+            properties: { label: `${Math.round(km / 1000)}` },
+            geometry: { type: "Point", coordinates: p },
+          });
+        }
+      }
     }
-    histRef.current = h;
-    histIdxRef.current = h.length - 1;
-    setHistIdx(histIdxRef.current);
-    setHistLen(h.length);
-  }, []);
+    const ms = m.getSource(SRC_MARK);
+    if (ms) ms.setData({ type: "FeatureCollection", features: marks });
+    const arrows = m.getSource(SRC_ARROWS);
+    if (arrows) arrows.setData(showArrows ? fc : { type: "FeatureCollection", features: [] });
 
-  const commitEditorPoint = useCallback(async (newPt: LngLat) => {
-    const aId = activeIdRef.current;
-    const curr = segsRef.current;
-    const activeSeg0 = curr.find((s) => s.id === aId);
-    const segMode =
-      activeSeg0?.routeSegmentMode ??
-      drawModeRef.current ??
-      DEFAULT_ROUTE_SEGMENT_MODE;
-    const follow = isRoutedSegmentMode(segMode);
-    const mode = transportModeRef.current;
-
-    let withPt: Segment[];
-    if (
-      insertModeRef.current &&
-      editorModeRef.current === "advanced" &&
-      activeWptRef.current &&
-      activeWptRef.current.segId === aId
-    ) {
-      const idx = activeWptRef.current.idx;
-      withPt = curr.map((s) => {
-        if (s.id !== aId) return s;
-        const wpts = [...s.waypoints];
-        const kinds = ensureWaypointKinds(s);
-        wpts.splice(idx + 1, 0, newPt);
-        kinds.splice(idx + 1, 0, "via");
-        return { ...s, waypoints: wpts, waypointKinds: kinds };
-      });
-      setInsertMode(false);
-      insertModeRef.current = false;
-    } else {
-      withPt = curr.map((s) =>
-        s.id !== aId
-          ? s
-          : {
-              ...s,
-              waypoints: [...s.waypoints, newPt],
-              waypointKinds: [...ensureWaypointKinds(s), "via"],
-              pathKind: pathKindForSegmentMode(segMode),
-              routeSegmentMode: segMode,
-            },
-      );
+    const hl: { type: string; properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } }[] = [];
+    if (hlDistM != null && line.length >= 2) {
+      const p = pointAtDistanceM(line, hlDistM);
+      if (p) {
+        hl.push({
+          type: "Feature",
+          properties: {},
+          geometry: { type: "Point", coordinates: p },
+        });
+      }
     }
-
-    segsRef.current = withPt;
-    setSegments(withPt);
-    syncMap(withPt);
-
-    const activeSeg = withPt.find((s) => s.id === aId);
-    if (!activeSeg || activeSeg.waypoints.length < 2) {
-      pushHist(withPt);
-      return;
+    if (selectedIssue) {
+      hl.push({
+        type: "Feature",
+        properties: { issue: true },
+        geometry: { type: "LineString", coordinates: selectedIssue.geometry },
+      });
     }
+    const hs = m.getSource(SRC_HL);
+    if (hs) hs.setData({ type: "FeatureCollection", features: hl });
 
-    if (!follow || activeSeg.pathKind === "freehand" || segMode === "MANUAL_STRAIGHT") {
-      const freePts = [...activeSeg.waypoints];
-      const gen = ++routeGenerationRef.current;
-      setSegments((prev) => {
-        if (gen !== routeGenerationRef.current) return prev;
-        const r = prev.map((s) =>
-          s.id === aId
-            ? {
-                ...s,
-                routePoints: freePts,
-                routingFailed: false,
-                absurdDetour: false,
-                pathKind: "freehand" as const,
-                routeSegmentMode: "MANUAL_STRAIGHT" as const,
-              }
-            : s,
-        );
-        segsRef.current = r;
-        syncMap(r);
-        return r;
-      });
-      pushHist(segsRef.current);
-      setRouteError(null);
-      scheduleLiveAuditRef.current();
-      return;
-    }
+    const pfc = {
+      type: "FeatureCollection",
+      features: poiOn
+        ? pois.map((p) => ({
+            type: "Feature",
+            properties: { id: p.id, cat: p.category, name: p.name ?? p.category },
+            geometry: { type: "Point", coordinates: [p.lon, p.lat] },
+          }))
+        : [],
+    };
+    const ps = m.getSource(SRC_POI);
+    if (ps) ps.setData(pfc);
+  }, [doc, hlDistM, poiOn, pois, selectedIssue, showArrows, showMarks, stats.distanceM]);
 
-    const gen = ++routeGenerationRef.current;
-    setRouting(true);
-    setRouteError(null);
-    const routed = await routeForMode(activeSeg.waypoints, mode, segMode);
-    if (gen !== routeGenerationRef.current) return;
-    if (!routed.ok) {
-      setRouteError(
-        (routed.message ?? "Sin ruta en este control point.") +
-          " No se inventa geometría. Prueba LÍNEA DIRECTA.",
-      );
-    } else if (routed.absurd && editorModeRef.current === "advanced") {
-      setRouteError(routed.message ?? "Desvío absurdo detectado.");
-    }
-    setSegments((prev) => {
-      if (gen !== routeGenerationRef.current) return prev;
-      const r = prev.map((s) =>
-        s.id === aId
-          ? {
-              ...s,
-              routePoints: routed.ok
-                ? routed.points
-                : s.routePoints.length >= 2
-                  ? s.routePoints
-                  : [],
-              routingFailed: !routed.ok,
-              absurdDetour: !!routed.absurd,
-              pathKind: "routed" as const,
-              routeSegmentMode: segMode,
-            }
-          : s,
-      );
-      segsRef.current = r;
-      const reproj = reprojectCuesOnTrack(cuesRef.current, r);
-      cuesRef.current = reproj;
-      setCues(reproj);
-      syncMap(r);
-      return r;
-    });
-    pushHist(segsRef.current);
-    setRouting(false);
-    scheduleLiveAuditRef.current();
-  }, [syncMap, pushHist]);
-  compatPlacePointRef.current = commitEditorPoint;
+  useEffect(() => { syncMap(); }, [syncMap, doc, tool, panel]);
 
-  // ── Map init ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!mapContainer.current || mapRef.current) return;
-
-    if (!document.getElementById("ml-css")) {
-      const link = document.createElement("link");
-      link.id  = "ml-css";
-      link.rel  = "stylesheet";
-      link.href = "https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css";
-      document.head.appendChild(link);
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let map: any;
-    let dragInfo: { segId: string; ptIdx: number } | null = null;
-    let eventsAttached = false;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const setupLayers = (m: any) => {
-      [LYR_USER, LYR_USER_RING, LYR_ROUTE_NOTES, LYR_POINTS, LYR_COMPAT_MARK, LYR_COMPAT, LYR_LINES, LYR_GLOW, LYR_CASING, LYR_POI].forEach(l => {
-        if (m.getLayer(l)) m.removeLayer(l);
-      });
-      [SRC_LINES, SRC_POINTS, SRC_USER, SRC_ROUTE_NOTES, SRC_COMPAT, SRC_POI].forEach(s => {
-        if (m.getSource(s)) m.removeSource(s);
-      });
-
-      const { lines, points } = buildGeoJSON(segsRef.current, activeWptRef.current);
-      const sat = mapStyleIdRef.current === "satellite";
-      const w = trackWidthRef.current;
-      const o = trackOpacityRef.current;
-
-      m.addSource(SRC_LINES,  { type: "geojson", data: lines  });
-      m.addSource(SRC_POINTS, { type: "geojson", data: points });
-      m.addSource(SRC_USER, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-      m.addSource(SRC_ROUTE_NOTES, {
-        type: "geojson",
-        data: buildRouteNotesGeoJSON(cuesRef.current, segsRef.current),
-      });
-      m.addSource(SRC_COMPAT, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-      m.addSource(SRC_POI, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-
-      // Route layers ABOVE satellite label layers (added last = on top)
+  const ensureLayers = useCallback((m: any) => {
+    if (!m.getSource(SRC_LINE)) {
+      m.addSource(SRC_LINE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       m.addLayer({
-        id: LYR_CASING,
+        id: "nr-line-casing",
         type: "line",
-        source: SRC_LINES,
-        paint: {
-          "line-color":   casingColor(sat),
-          "line-width":   casingWidth(w),
-          "line-opacity": casingOpacity(o, sat),
-          "line-cap":     "round",
-          "line-join":    "round",
-        },
+        source: SRC_LINE,
+        paint: { "line-color": "#111", "line-width": 8, "line-opacity": 0.55 },
       });
-
       m.addLayer({
-        id: LYR_GLOW,
+        id: "nr-line",
         type: "line",
-        source: SRC_LINES,
-        paint: {
-          "line-color":   ["get", "color"],
-          "line-width":   w * 2.8,
-          "line-opacity": Math.min(0.35, o * 0.28),
-          "line-blur":    8,
-        },
+        source: SRC_LINE,
+        paint: { "line-color": "#f97316", "line-width": 4.5, "line-opacity": 0.98 },
       });
-
+    }
+    if (!m.getSource(SRC_ARROWS)) {
+      m.addSource(SRC_ARROWS, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       m.addLayer({
-        id: LYR_LINES,
+        id: "nr-arrows",
+        type: "symbol",
+        source: SRC_ARROWS,
+        layout: {
+          "symbol-placement": "line",
+          "text-field": "▶",
+          "text-size": 12,
+          "symbol-spacing": 70,
+        },
+        paint: { "text-color": "#fff", "text-halo-color": "#111", "text-halo-width": 1 },
+      });
+    }
+    if (!m.getSource(SRC_HL)) {
+      m.addSource(SRC_HL, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      m.addLayer({
+        id: "nr-hl-line",
         type: "line",
-        source: SRC_LINES,
-        paint: {
-          "line-color":   ["get", "color"],
-          "line-width":   w,
-          "line-opacity": o,
-          "line-cap":     "round",
-          "line-join":    "round",
-        },
-      });
-
-      m.addLayer({
-        id: LYR_COMPAT,
-        type: "line",
-        source: SRC_COMPAT,
-        filter: ["==", ["get", "kind"], "span"],
-        paint: {
-          "line-color": ["get", "color"],
-          "line-width": 4,
-          "line-opacity": 0.9,
-          "line-dasharray": [1.4, 1.2],
-        },
+        source: SRC_HL,
+        filter: ["==", ["geometry-type"], "LineString"],
+        paint: { "line-color": "#22d3ee", "line-width": 7, "line-opacity": 0.85 },
       });
       m.addLayer({
-        id: LYR_COMPAT_MARK,
+        id: "nr-hl-pt",
         type: "circle",
+        source: SRC_HL,
+        filter: ["==", ["geometry-type"], "Point"],
+        paint: { "circle-radius": 8, "circle-color": "#22d3ee", "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
+      });
+    }
+    if (!m.getSource(SRC_COMPAT)) {
+      m.addSource(SRC_COMPAT, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      m.addLayer({
+        id: "nr-compat",
+        type: "line",
         source: SRC_COMPAT,
-        filter: ["==", ["get", "kind"], "mark"],
+        paint: { "line-color": "#ef4444", "line-width": 6, "line-opacity": 0.7 },
+      });
+    }
+    if (!m.getSource(SRC_ANCHOR)) {
+      m.addSource(SRC_ANCHOR, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      m.addLayer({
+        id: "nr-anchors",
+        type: "circle",
+        source: SRC_ANCHOR,
         paint: {
-          "circle-radius": 8,
-          "circle-color": ["get", "color"],
-          "circle-stroke-color": "#111",
-          "circle-stroke-width": 2,
+          "circle-radius": embedNavRideApp ? 11 : 7,
+          "circle-color": "#fff",
+          "circle-stroke-width": 3,
+          "circle-stroke-color": "#f97316",
         },
       });
+    }
+    if (!m.getSource(SRC_WPT)) {
+      m.addSource(SRC_WPT, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       m.addLayer({
-        id: LYR_POI,
+        id: "nr-wpt",
+        type: "circle",
+        source: SRC_WPT,
+        paint: { "circle-radius": 7, "circle-color": "#22c55e", "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
+      });
+    }
+    if (!m.getSource(SRC_MARK)) {
+      m.addSource(SRC_MARK, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      m.addLayer({
+        id: "nr-marks",
+        type: "symbol",
+        source: SRC_MARK,
+        layout: { "text-field": ["get", "label"], "text-size": 11 },
+        paint: { "text-color": "#fff", "text-halo-color": "#000", "text-halo-width": 1.2 },
+      });
+    }
+    if (!m.getSource(SRC_POI)) {
+      m.addSource(SRC_POI, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      m.addLayer({
+        id: "nr-poi",
         type: "circle",
         source: SRC_POI,
-        paint: {
-          "circle-radius": 6,
-          "circle-color": "#f97316",
-          "circle-stroke-color": "#111",
-          "circle-stroke-width": 1.2,
-          "circle-opacity": 0.92,
-        },
+        paint: { "circle-radius": 6, "circle-color": "#38bdf8", "circle-stroke-width": 1.5, "circle-stroke-color": "#fff" },
       });
-
+    }
+    if (!m.getSource(SRC_USER)) {
+      m.addSource(SRC_USER, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       m.addLayer({
-        id: LYR_POINTS,
-        type: "circle",
-        source: SRC_POINTS,
-        paint: {
-          "circle-radius": [
-            "case",
-            ["==", ["get", "active"], 1],
-            10,
-            7,
-          ],
-          "circle-color":          ["get", "color"],
-          "circle-stroke-color":   [
-            "case",
-            ["==", ["get", "active"], 1],
-            "#FF5A1F",
-            "#ffffff",
-          ],
-          "circle-stroke-width":   [
-            "case",
-            ["==", ["get", "active"], 1],
-            3.5,
-            2.5,
-          ],
-          "circle-stroke-opacity": 1,
-        },
-      });
-
-      m.addLayer({
-        id: LYR_USER_RING,
+        id: "nr-user",
         type: "circle",
         source: SRC_USER,
-        paint: {
-          "circle-radius": 14,
-          "circle-color": "#3b82f6",
-          "circle-opacity": 0.25,
-        },
+        paint: { "circle-radius": 7, "circle-color": "#3b82f6", "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
       });
-      m.addLayer({
-        id: LYR_USER,
-        type: "circle",
-        source: SRC_USER,
-        paint: {
-          "circle-radius": 7,
-          "circle-color": "#3b82f6",
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 2.5,
-        },
-      });
+    }
+  }, [embedNavRideApp]);
 
-      m.addLayer({
-        id: LYR_ROUTE_NOTES,
-        type: "circle",
-        source: SRC_ROUTE_NOTES,
-        paint: { ...routeNotesCirclePaint },
-      });
+  const routePair = useCallback(async (from: LngLat, to: LngLat, gen: number): Promise<LngLat[] | null> => {
+    if (trace === "STRAIGHT") return [from, to];
+    const fetched = await fetchWaysAround(to, 80);
+    if (engineRef.current.isStale(gen)) return null;
+    if (!fetched.ok) {
+      setStatus("Servicio de cartografía no disponible.");
+      return [from, to];
+    }
+    waysCache.current = fetched.ways;
+    const path = routeOnOsmNetwork(fetched.ways, from, to, mode);
+    if (engineRef.current.isStale(gen)) return null;
+    return path;
+  }, [mode, trace]);
 
-      mapReady.current = true;
-      styleChangingRef.current = false;
-    };
+  const handleMapClick = useCallback(async (lng: number, lat: number) => {
+    const click: LngLat = [lng, lat];
+    if (tool === "waypoint") {
+      engineRef.current.addWpt(lat, lng);
+      redraw();
+      return;
+    }
+    if (tool === "split") {
+      const near = nearestOnPolyline(click, lngLatsOf(engineRef.current.doc));
+      if (near && near.distanceM < 40) {
+        engineRef.current.split(near.index, embedNavRideApp ? "segments" : "tracks");
+        setTool("none");
+        redraw();
+      }
+      return;
+    }
+    if (tool === "select") return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const attachEvents = (m: any) => {
-      if (eventsAttached) return;
-      eventsAttached = true;
-      m.on("moveend", () => refreshPoisRef.current());
+    const line = lngLatsOf(engineRef.current.doc);
+    if (line.length >= 2) {
+      const near = nearestOnPolyline(click, line);
+      if (near && near.distanceM < 18) {
+        const gen = engineRef.current.bump();
+        engineRef.current.insert(0, 0, near.index + (near.fraction > 0.5 ? 1 : 0), click);
+        if (engineRef.current.isStale(gen)) return;
+        redraw();
+        return;
+      }
+    }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      m.on("click", LYR_ROUTE_NOTES, (e: any) => {
-        if (!e.features?.[0]) return;
-        e.originalEvent?.stopPropagation?.();
-        const id = String(e.features[0].properties?.id ?? "");
-        if (id) setSelectedCueId(id);
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      m.on("click", LYR_POINTS, (e: any) => {
-        if (!e.features?.[0]) return;
-        e.originalEvent?.stopPropagation?.();
-        const props = e.features[0].properties;
-        const sel = { segId: String(props.segId), idx: Number(props.ptIdx) };
-        setActiveWpt(sel);
-        activeWptRef.current = sel;
-        setActiveId(sel.segId);
-        activeIdRef.current = sel.segId;
-        syncMap(segsRef.current, sel);
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      m.on("click", LYR_COMPAT_MARK, (e: any) => {
-        if (!e.features?.[0]) return;
-        e.originalEvent?.stopPropagation?.();
-        const id = String(e.features[0].properties?.id ?? "");
-        const iss = compatAuditRef.current?.issues.find((x) => x.id === id);
-        if (iss) {
-          setCompatIssueRef.current(iss);
-          const b = iss.geometry;
-          if (b.length >= 2) {
-            const lngs = b.map((p) => p[0]);
-            const lats = b.map((p) => p[1]);
-            m.fitBounds(
-              [
-                [Math.min(...lngs), Math.min(...lats)],
-                [Math.max(...lngs), Math.max(...lats)],
-              ],
-              { padding: 80, maxZoom: 17, duration: 700 },
-            );
-          } else {
-            m.flyTo({ center: iss.midpoint, zoom: 17, duration: 700 });
-          }
-        }
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      m.on("click", async (e: any) => {
-        const noteHit = m.queryRenderedFeatures(e.point, { layers: [LYR_ROUTE_NOTES] });
-        if (noteHit.length > 0) return;
-        const hit = m.queryRenderedFeatures(e.point, { layers: [LYR_POINTS] });
-        if (hit.length > 0) return;
-        const compatHit = m.queryRenderedFeatures(e.point, { layers: [LYR_COMPAT_MARK] });
-        if (compatHit.length > 0) return;
-        if (styleChangingRef.current) return;
-
-        const { lng, lat } = e.lngLat;
-        const clickPt: LngLat = [lng, lat];
-
-        // Place map note at exact click (not mid-route default).
-        if (placeNotePendingRef.current) {
-          const msg = cueDraftMessageRef.current.trim();
-          if (!msg) {
-            setRouteError("Escribe el mensaje de la nota antes de pulsar el mapa.");
-            return;
-          }
-          const line = flattenRouteLngLats(segsRef.current);
-          const hitProj = progressMNearestOnPolyline(line, clickPt);
-          const off =
-            !hitProj || hitProj.distanceToTrackM > NOTE_OFF_TRACK_METERS;
-          const cue = createCue({
-            message: msg,
-            severity: cueDraftSeverityRef.current,
-            lat,
-            lon: lng,
-            progressM: off ? null : hitProj!.progressM,
-            noteStatus: off ? "off_track" : "on_track",
-            nearestSegmentIndex: hitProj?.segmentIndex ?? null,
-            projectionFraction: hitProj?.fraction ?? null,
-            segmentId: activeIdRef.current,
-          });
-          setCues((prev) => [...prev, cue]);
-          setCueDraftMessage("");
-          setPlaceNotePending(false);
-          placeNotePendingRef.current = false;
-          if (off) {
-            setRouteError("Nota fuera del track — se conserva lat/lon sin km de ruta.");
-          } else {
-            setRouteError(null);
-          }
+    const gen = engineRef.current.bump();
+    setRouting(true);
+    setPrompt(null);
+    try {
+      const fetched = await fetchWaysAround(click, 40);
+      if (engineRef.current.isStale(gen)) return;
+      if (fetched.ok) {
+        waysCache.current = fetched.ways;
+        const decision = snapClickToOsmNetwork(click, fetched.ways, mode);
+        if (decision.kind === "prompt") {
+          setPrompt({ hit: decision.hit, nearbyCompatible: decision.nearbyCompatible });
+          pendingClick.current = click;
+          setStatus(`${decision.hit.classification.wayTypeLabel} detectada · no compatible con ${PROFILES.find((p) => p.id === mode)?.label ?? mode}`);
           return;
         }
-
-        const aId  = activeIdRef.current;
-        const curr = segsRef.current;
-        const activeSeg0 = curr.find(s => s.id === aId);
-        // Imported track is geometric authority — do not append routed waypoints silently.
-        if (activeSeg0?.pathKind === "track") {
-          setRouteError(
-            "GPX importado: geometría fija. Usa LÍNEA DIRECTA para editar a mano, o crea un segmento nuevo.",
-          );
-          return;
+        if (decision.kind === "place") {
+          click[0] = decision.snapped[0];
+          click[1] = decision.snapped[1];
         }
+      }
+      const last = engineRef.current.lastPoint();
+      let routed: LngLat[] | undefined;
+      if (last) {
+        const path = await routePair([last.lon, last.lat], click, gen);
+        if (engineRef.current.isStale(gen)) return;
+        routed = path ?? undefined;
+      }
+      engineRef.current.addClick(click[1], click[0], routed);
+      redraw();
+    } finally {
+      setRouting(false);
+    }
+  }, [embedNavRideApp, mode, routePair, tool]);
 
-        const mode = transportModeRef.current;
-        let newPt: LngLat = clickPt;
-
-        try {
-            const fetched = await fetchWaysAround(clickPt, 80);
-            if (!fetched.ok) {
-              setCompatDataGap(clickPt);
-              return;
-            }
-            const decision = snapClickToOsmNetwork(clickPt, fetched.ways, mode);
-            if (decision.kind === "prompt") {
-              setCompatPromptRef.current({
-                hit: decision.hit,
-                nearbyCompatible: decision.nearbyCompatible,
-              });
-              m.flyTo({ center: decision.hit.snapped, zoom: Math.max(m.getZoom(), 16), duration: 400 });
-              return;
-            }
-            if (decision.hit) {
-              newPt = decision.snapped;
-            }
-          } catch {
-            setCompatDataGap(clickPt);
-            return;
-          }
-
-        await compatPlacePointRef.current(newPt);
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      m.on("mousedown", LYR_POINTS, (e: any) => {
-        e.preventDefault();
-        const props = e.features[0].properties;
-        dragInfo = { segId: String(props.segId), ptIdx: Number(props.ptIdx) };
-        const sel = { segId: dragInfo.segId, idx: dragInfo.ptIdx };
-        setActiveWpt(sel);
-        activeWptRef.current = sel;
-        m.getCanvas().style.cursor = "grabbing";
-        m.dragPan.disable();
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      m.on("mousemove", (e: any) => {
-        if (!dragInfo) return;
-        const { lng, lat } = e.lngLat;
-        const upd = segsRef.current.map(s => {
-          if (s.id !== dragInfo!.segId) return s;
-          const wpts = [...s.waypoints];
-          wpts[dragInfo!.ptIdx] = [lng, lat];
-          return { ...s, waypoints: wpts };
-        });
-        segsRef.current = upd;
-        setSegments(upd);
-        syncMap(upd);
-      });
-
-      m.on("mouseup", async () => {
-        if (!dragInfo) return;
-        const di = dragInfo;
-        dragInfo = null;
-        m.getCanvas().style.cursor = "";
-        m.dragPan.enable();
-
-        const seg = segsRef.current.find(s => s.id === di.segId);
-        if (!seg || seg.waypoints.length < 2) {
-          pushHist(segsRef.current);
-          return;
-        }
-
-        setRouting(true);
-        setRouteError(null);
-        const pathKind = seg.pathKind ?? "routed";
-        if (pathKind === "track") {
-          setRouteError("GPX importado: geometría de track fija — no se re-enruta al mover waypoints.");
-          pushHist(segsRef.current);
-          setRouting(false);
-          return;
-        }
-        if (pathKind === "freehand") {
-          const freePts = [...seg.waypoints];
-          setSegments(prev => {
-            const r = prev.map(s =>
-              s.id === di.segId
-                ? { ...s, routePoints: freePts, routingFailed: false, absurdDetour: false }
-                : s,
-            );
-            segsRef.current = r;
-            const reproj = reprojectCuesOnTrack(cuesRef.current, r);
-            cuesRef.current = reproj;
-            setCues(reproj);
-            syncMap(r);
-            pushHist(r);
-            return r;
-          });
-          setRouting(false);
-          return;
-        }
-        const gen = ++routeGenerationRef.current;
-        const sm = parseRouteSegmentMode(
-          seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
-        );
-        const routed = await routeForMode(seg.waypoints, transportModeRef.current, sm);
-        if (gen !== routeGenerationRef.current) return;
-        if (!routed.ok) {
-          setRouteError(
-            (routed.message ?? "Punto inalcanzable — no se dibuja línea recta."),
-          );
-        } else if (routed.absurd && editorModeRef.current === "advanced") {
-          setRouteError(routed.message ?? "Desvío absurdo detectado.");
-        }
-        setSegments(prev => {
-          if (gen !== routeGenerationRef.current) return prev;
-          const r = prev.map(s => s.id === di.segId ? {
-            ...s,
-            routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
-            routingFailed: !routed.ok,
-            absurdDetour: !!routed.absurd,
-          } : s);
-          segsRef.current = r;
-          const reproj = reprojectCuesOnTrack(cuesRef.current, r);
-          cuesRef.current = reproj;
-          setCues(reproj);
-          syncMap(r);
-          pushHist(r);
-          return r;
-        });
-        setRouting(false);
-      });
-
-      m.on("mouseenter", LYR_POINTS, () => {
-        if (!dragInfo) m.getCanvas().style.cursor = "grab";
-      });
-      m.on("mouseleave", LYR_POINTS, () => {
-        if (!dragInfo) m.getCanvas().style.cursor = "";
-      });
-      m.on("mouseenter", LYR_COMPAT_MARK, () => {
-        if (!dragInfo) m.getCanvas().style.cursor = "pointer";
-      });
-      m.on("mouseleave", LYR_COMPAT_MARK, () => {
-        if (!dragInfo) m.getCanvas().style.cursor = "";
-      });
-    };
-
+  useEffect(() => {
+    if (!mapContainer.current || mapRef.current) return;
+    let cancelled = false;
     import("maplibre-gl").then((ml) => {
-      map = new ml.Map({
-        container: mapContainer.current!,
-        style: MAP_STYLES[0].url as string,
-        center: [-3.7, 40.4],
-        zoom: 5,
-        maxZoom: 22,
+      if (cancelled || !mapContainer.current) return;
+      const map = new ml.default.Map({
+        container: mapContainer.current,
+        style: styleUrl(mapStyleId) as any,
+        center: [-3.7038, 40.4168],
+        zoom: 12,
         attributionControl: { compact: true },
       });
       mapRef.current = map;
-
+      let drag: { ti: number; si: number; pi: number } | null = null;
       map.on("load", () => {
-        setupLayers(map);
-        attachEvents(map);
+        ensureLayers(map);
+        syncMap();
       });
-
       map.on("style.load", () => {
-        if (!eventsAttached) return;
-        // Cap overscaling for Esri World Imagery (native maxzoom 19).
-        if (mapStyleIdRef.current === "satellite") {
-          map.setMaxZoom(19);
-        } else {
-          map.setMaxZoom(22);
-        }
-        setupLayers(map);
-        syncMap(segsRef.current);
-        refreshPoisRef.current();
-        try {
-          map.getSource(SRC_COMPAT)?.setData(
-            auditToGeoJSON(compatAuditRef.current, keptCompatIdsRef.current, null),
-          );
-        } catch { /* */ }
-        syncUserMarker(
-          // read latest via closure — userLngLat may be stale; source syncs via effect
-          null,
-        );
+        ensureLayers(map);
+        syncMap();
       });
-    });
-
-    return () => {
-      map?.remove();
-      mapRef.current   = null;
-      mapReady.current = false;
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Style switcher effect ─────────────────────────────────────────────────
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    let cancelled = false;
-
-    (async () => {
-      mapReady.current = false;
-      styleChangingRef.current = true;
-      if (mapStyleId === "satellite") {
-        const style = await buildSatelliteStyleFromLiberty();
-        if (cancelled) return;
-        map.setStyle(style as object);
-      } else {
-        const style = MAP_STYLES.find(s => s.id === mapStyleId);
-        if (!style) return;
-        map.setStyle(style.url as object);
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [mapStyleId]);
-
-  const refreshPois = useCallback(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady.current) return;
-    const cats = [...poiCatsRef.current];
-    if (cats.length === 0 || map.getZoom() < 11) {
-      try {
-        map.getSource(SRC_POI)?.setData({ type: "FeatureCollection", features: [] });
-      } catch { /* */ }
-      return;
-    }
-    const b = map.getBounds();
-    const gen = poiStoreRef.current.generation === 0
-      ? poiStoreRef.current.bump()
-      : poiStoreRef.current.generation;
-    void fetchPoisBbox(
-      cats,
-      b.getSouth(),
-      b.getWest(),
-      b.getNorth(),
-      b.getEast(),
-      gen,
-      poiStoreRef.current,
-    ).then((res) => {
-      if (poiStoreRef.current.isStale(res.generation)) return;
-      if (!res.ok) {
-        setRouteError((prev) => prev ?? "Puntos de interés no disponibles ahora. La ruta no se ha modificado.");
-        return;
-      }
-      const key = poiTileKey((b.getSouth() + b.getNorth()) / 2, (b.getWest() + b.getEast()) / 2);
-      poiStoreRef.current.put(key, res.pois, gen);
-      try {
-        map.getSource(SRC_POI)?.setData({
-          type: "FeatureCollection",
-          features: res.pois.map((p) => ({
-            type: "Feature",
-            properties: { id: p.id, category: p.category, name: p.name ?? p.category },
-            geometry: { type: "Point", coordinates: [p.lon, p.lat] },
-          })),
-        });
-      } catch { /* */ }
-    });
-  }, []);
-
-  useEffect(() => {
-    refreshPoisRef.current = refreshPois;
-  }, [refreshPois]);
-
-  useEffect(() => {
-    refreshPois();
-  }, [poiCats, refreshPois]);
-
-  // Re-route only routed segments (FOLLOW_ROAD / FOLLOW_TRAIL) — never rewrite track / MANUAL_STRAIGHT.
-  const rerouteAll = useCallback(async (mode: TransportMode) => {
-    const curr = segsRef.current;
-    const need = curr.filter(
-      (s) =>
-        s.waypoints.length >= 2 &&
-        isRoutedSegmentMode(
-          parseRouteSegmentMode(
-            s.routeSegmentMode ?? (s.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
-          ),
-        ) &&
-        (s.pathKind ?? "routed") !== "track",
-    );
-    if (need.length === 0) return;
-    const gen = ++routeGenerationRef.current;
-    setRouting(true);
-    setRouteError(null);
-    const next = [...curr];
-    for (let i = 0; i < next.length; i++) {
-      const s = next[i];
-      if (s.waypoints.length < 2) continue;
-      const sm = parseRouteSegmentMode(
-        s.routeSegmentMode ?? (s.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
-      );
-      if (!isRoutedSegmentMode(sm) || (s.pathKind ?? "routed") === "track") continue;
-      const routed = await routeForMode(s.waypoints, mode, sm);
-      if (gen !== routeGenerationRef.current) return;
-      next[i] = {
-        ...s,
-        routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
-        routingFailed: !routed.ok,
-        absurdDetour: !!routed.absurd,
-        routeSegmentMode: sm,
-        pathKind: pathKindForSegmentMode(sm),
-      };
-      if (!routed.ok) {
-        setRouteError(
-          (routed.message ?? "Punto inalcanzable en el nuevo modo.") +
-            " Sin geometría inventada.",
-        );
-      } else if (routed.absurd && editorModeRef.current === "advanced") {
-        setRouteError(routed.message ?? "Desvío absurdo tras cambiar modo.");
-      }
-    }
-    if (gen !== routeGenerationRef.current) return;
-    segsRef.current = next;
-    setSegments(next);
-    const reproj = reprojectCuesOnTrack(cuesRef.current, next);
-    cuesRef.current = reproj;
-    setCues(reproj);
-    syncMap(next);
-    pushHist(next);
-    setRouting(false);
-  }, [syncMap, pushHist]);
-
-  const handleTransportChange = useCallback((mode: TransportMode) => {
-    setTransportMode(mode);
-    transportModeRef.current = mode;
-    setCompatIssue(null);
-    setCompatPrompt(null);
-    setCompatAltLine(null);
-    setCompatAltVia(null);
-    setKeptCompatIds(new Set());
-    void (async () => {
-      await rerouteAll(mode);
-      const pts = flattenRouteLngLats(segsRef.current);
-      if (pts.length < 2) {
-        setCompatAudit(null);
-        return;
-      }
-      setCompatLoading(true);
-      try {
-        const fetched = await fetchWaysAlongRoute(pts);
-        if (!fetched.ok && fetched.ways.length === 0) {
-          setRouteError("No se pudo reanalizar la ruta con la cartografía disponible. NavRide no asume que sea válida.");
+      map.on("zoom", () => {
+        zoomRef.current = map.getZoom();
+        syncMap();
+      });
+      map.on("click", (e: any) => {
+        if (drag) return;
+        const feats = map.queryRenderedFeatures(e.point, { layers: ["nr-poi"] });
+        if (feats[0]) {
+          const id = String(feats[0].properties?.id ?? "");
+          const p = poisRef.current.find((x) => x.id === id);
+          if (p) {
+            setPoiPick(p);
+            return;
+          }
+        }
+        const w = map.queryRenderedFeatures(e.point, { layers: ["nr-wpt"] });
+        if (w[0]) {
+          const id = String(w[0].properties?.id ?? "");
+          const wp = engineRef.current.doc.waypoints.find((x) => x.id === id);
+          if (wp) setWptEdit({ id, name: wp.name, desc: wp.desc });
           return;
         }
-        setCompatAudit(auditRouteGeometry(pts, fetched.ways, mode));
-        if (!fetched.ok) {
-          setRouteError("La revisión del nuevo perfil puede estar incompleta: no se pudieron leer todas las vías.");
+        void handleClickRef.current(e.lngLat.lng, e.lngLat.lat);
+      });
+      map.on("mousedown", "nr-anchors", (e: any) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        drag = { ti: Number(f.properties.ti), si: Number(f.properties.si), pi: Number(f.properties.pi) };
+        map.dragPan.disable();
+        e.preventDefault();
+      });
+      map.on("mousemove", (e: any) => {
+        if (!drag) return;
+        const pts = engineRef.current.doc.tracks[drag.ti]?.segments[drag.si]?.points;
+        if (!pts?.[drag.pi]) return;
+        pts[drag.pi] = { ...pts[drag.pi], lat: e.lngLat.lat, lon: e.lngLat.lng };
+        syncMap();
+      });
+      map.on("mouseup", async () => {
+        if (!drag) return;
+        const d = drag;
+        drag = null;
+        map.dragPan.enable();
+        const gen = engineRef.current.bump();
+        const seg = engineRef.current.doc.tracks[d.ti]?.segments[d.si];
+        if (!seg) return;
+        const p = seg.points[d.pi];
+        const dest: LngLat = [p.lon, p.lat];
+        setRouting(true);
+        try {
+          let prevR: LngLat[] | undefined;
+          let nextR: LngLat[] | undefined;
+          const anchors = visibleAnchors(engineRef.current.doc, 22);
+          const same = anchors.filter((a) => a.trackIndex === d.ti && a.segmentIndex === d.si);
+          const idx = same.findIndex((a) => a.pointIndex === d.pi);
+          const prevA = idx > 0 ? same[idx - 1] : null;
+          const nextA = idx >= 0 && idx < same.length - 1 ? same[idx + 1] : null;
+          if (prevA) prevR = (await routePair([prevA.lon, prevA.lat], dest, gen)) ?? undefined;
+          if (engineRef.current.isStale(gen)) return;
+          if (nextA) nextR = (await routePair(dest, [nextA.lon, nextA.lat], gen)) ?? undefined;
+          if (engineRef.current.isStale(gen)) return;
+          engineRef.current.move(d.ti, d.si, d.pi, dest, prevR, nextR);
+          redraw();
+        } finally {
+          setRouting(false);
         }
-      } catch {
-        setRouteError("No se pudo reanalizar la ruta con la cartografía disponible.");
-      } finally {
-        setCompatLoading(false);
-      }
-    })();
-  }, [rerouteAll]);
-
-  const flyToIssue = useCallback((iss: CompatibilityIssue) => {
-    const map = mapRef.current;
-    if (!map) return;
-    const b = iss.geometry;
-    if (b.length >= 2) {
-      const lngs = b.map((p) => p[0]);
-      const lats = b.map((p) => p[1]);
-      map.fitBounds(
-        [
-          [Math.min(...lngs), Math.min(...lats)],
-          [Math.max(...lngs), Math.max(...lats)],
-        ],
-        { padding: 80, maxZoom: 17, duration: 700 },
-      );
-    } else {
-      map.flyTo({ center: iss.midpoint, zoom: 17, duration: 700 });
-    }
+      });
+    });
+    return () => { cancelled = true; };
   }, []);
 
-  const runCompatReview = useCallback(async () => {
-    const pts = flattenRouteLngLats(segsRef.current);
-    if (pts.length < 2) {
-      setRouteError("Hace falta un recorrido con al menos dos puntos para revisar la ruta.");
-      return;
-    }
-    setCompatLoading(true);
-    setCompatIssue(null);
-    setRouteError(null);
-    try {
-      const fetched = await fetchWaysAlongRoute(pts);
-      if (!fetched.ok && fetched.ways.length === 0) {
-        setRouteError(
-          "Según la información cartográfica disponible, no se pudieron cargar vías para esta zona. NavRide no asume que la ruta sea válida.",
-        );
-        return;
-      }
-      const audit = auditRouteGeometry(pts, fetched.ways, transportModeRef.current);
-      setCompatAudit(audit);
-      if (!fetched.ok || fetched.ways.length === 0) {
-        setRouteError(
-          "Según la información cartográfica disponible, la revisión puede quedar incompleta.",
-        );
-      }
-    } catch {
-      setRouteError("No se pudo completar la revisión de ruta con la cartografía disponible.");
-    } finally {
-      setCompatLoading(false);
-    }
-  }, []);
+  const handleClickRef = useRef(handleMapClick);
+  handleClickRef.current = handleMapClick;
+  const poisRef = useRef(pois);
+  poisRef.current = pois;
 
-  const scheduleLiveAudit = useCallback(() => {
-    window.setTimeout(() => {
-      void (async () => {
-        const pts = flattenRouteLngLats(segsRef.current);
-        if (pts.length < 2) return;
-        const tail = tailPolyline(pts, 2.5);
-        const fetched = await fetchWaysAlongRoute(tail.pts);
-        if (!fetched.ok && fetched.ways.length === 0) return;
-        const partial = auditRouteGeometry(tail.pts, fetched.ways, transportModeRef.current);
-        setCompatAudit((prev) => mergeTailAudit(prev, partial, tail.offsetKm));
-      })();
-    }, 800);
-  }, []);
-  scheduleLiveAuditRef.current = scheduleLiveAudit;
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m) return;
+    m.setStyle(styleUrl(mapStyleId) as any);
+  }, [mapStyleId]);
 
-  const findCompatAlternative = useCallback(async (around: LngLat, from?: LngLat, to?: LngLat) => {
-    setCompatFindingAlt(true);
-    try {
-      const mode = transportModeRef.current;
-      const fetched = await fetchWaysAround(around, 120);
-      if (!fetched.ok) {
-        setRouteError("No se pudo buscar una alternativa: la cartografía no está disponible ahora.");
-        return;
-      }
-      const preferred = compatibleWaysOnly(fetched.ways, mode);
-      if (preferred.length === 0) {
-        setRouteError("No hay una conexión compatible cercana según la cartografía disponible.");
-        setCompatAltLine(null);
-        setCompatAltVia(null);
-        return;
-      }
-      const a = from ?? around;
-      const b = to ?? around;
-      const line = routeOnOsmNetwork(preferred, a, b, mode);
-      const via = rankWaysNearClick(around, preferred, mode, 120)[0]?.snapped ?? line[Math.floor(line.length / 2)] ?? around;
-      setCompatAltVia(via);
-      setCompatAltLine(line.length >= 2 ? line : [a, via]);
-      mapRef.current?.flyTo({ center: via, zoom: 16, duration: 500 });
-    } finally {
-      setCompatFindingAlt(false);
-    }
-  }, []);
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m) return;
+    m.easeTo({ pitch: pitch3d ? 55 : 0, duration: 400 });
+  }, [pitch3d]);
 
-  const acceptCompatAlt = useCallback(async () => {
-    const via = compatAltVia;
-    if (!via) return;
-    setCompatPrompt(null);
-    setCompatAltLine(null);
-    setCompatAltVia(null);
-    if (compatIssue) {
-      const aId = activeIdRef.current;
-      const curr = segsRef.current;
-      const seg = curr.find((s) => s.id === aId);
-      if (seg && seg.waypoints.length >= 1) {
-        let best = 0;
-        let bestD = Infinity;
-        for (let i = 0; i < seg.waypoints.length; i++) {
-          const d = haversineKm(seg.waypoints[i], via);
-          if (d < bestD) {
-            bestD = d;
-            best = i;
-          }
-        }
-        const insertAt = Math.min(seg.waypoints.length, best + 1);
-        const next = curr.map((s) => {
-          if (s.id !== aId) return s;
-          const wpts = [...s.waypoints];
-          const kinds = ensureWaypointKinds(s);
-          wpts.splice(insertAt, 0, via);
-          kinds.splice(insertAt, 0, "via");
-          return { ...s, waypoints: wpts, waypointKinds: kinds };
-        });
-        segsRef.current = next;
-        setSegments(next);
-        const updated = next.find((s) => s.id === aId)!;
-        const sm = parseRouteSegmentMode(
-          updated.routeSegmentMode ?? DEFAULT_ROUTE_SEGMENT_MODE,
-        );
-        if (isRoutedSegmentMode(sm) && updated.waypoints.length >= 2) {
-          const routed = await routeForMode(updated.waypoints, transportModeRef.current, sm);
-          const r = next.map((s) =>
-            s.id === aId
-              ? {
-                  ...s,
-                  routePoints: routed.ok ? routed.points : s.routePoints,
-                  routingFailed: !routed.ok,
-                }
-              : s,
-          );
-          segsRef.current = r;
-          setSegments(r);
-          syncMap(r);
-          pushHist(r);
-        } else {
-          syncMap(next);
-          pushHist(next);
-        }
-        setCompatIssue(null);
-        void runCompatReview();
-        return;
-      }
-    }
-    await commitEditorPoint(via);
-  }, [compatAltVia, compatIssue, commitEditorPoint, syncMap, pushHist, runCompatReview]);
-
-  /** Change mode on the ACTIVE segment only — partial recalculation gate. */
-  const handleSegmentModeChange = useCallback(async (mode: RouteSegmentMode) => {
-    setDrawMode(mode);
-    drawModeRef.current = mode;
-    const aId = activeIdRef.current;
-    const curr = segsRef.current;
-    const idx = curr.findIndex((s) => s.id === aId);
-    if (idx < 0) return;
-
-    // Fingerprints of other segments BEFORE change (A→B / C→D must stay equal).
-    const beforeFp = curr.map((s) => geometryFingerprint(s.routePoints.length >= 2 ? s.routePoints : s.waypoints));
-
-    const target = curr[idx];
-    if (target.pathKind === "track") {
-      setRouteError("GPX importado: no se cambia el modo de un track autoritativo. Crea un segmento nuevo.");
-      return;
-    }
-
-    const gen = ++routeGenerationRef.current;
-    setRouting(true);
-    setRouteError(null);
-
-    let routePoints = target.routePoints;
-    let routingFailed = false;
-    let absurdDetour = false;
-
-    if (mode === "MANUAL_STRAIGHT") {
-      routePoints = [...target.waypoints];
-      routingFailed = false;
-    } else if (target.waypoints.length >= 2) {
-      const routed = await routeForMode(
-        target.waypoints,
-        transportModeRef.current,
-        mode,
-      );
-      if (gen !== routeGenerationRef.current) return;
-      if (!routed.ok) {
-        routePoints = [];
-        routingFailed = true;
-        setRouteError(
-          (routed.message ?? "Sin ruta válida para este tramo.") +
-            " No se usa recta falsa como éxito.",
-        );
-      } else {
-        routePoints = routed.points;
-        absurdDetour = !!routed.absurd;
-        if (routed.absurd && editorModeRef.current === "advanced") {
-          setRouteError(routed.message ?? "Desvío absurdo detectado.");
-        }
-      }
-    }
-
-    if (gen !== routeGenerationRef.current) return;
-
-    const next = curr.map((s, i) =>
-      i === idx
-        ? {
-            ...s,
-            routeSegmentMode: mode,
-            pathKind: pathKindForSegmentMode(mode),
-            routePoints,
-            routingFailed,
-            absurdDetour,
-          }
-        : s,
-    );
-
-    // Gate: other segments' geometry must be byte-equal (fingerprint).
-    for (let i = 0; i < next.length; i++) {
-      if (i === idx) continue;
-      const after = geometryFingerprint(
-        next[i].routePoints.length >= 2 ? next[i].routePoints : next[i].waypoints,
-      );
-      if (after !== beforeFp[i]) {
-        setRouteError("ERROR interno: reroute parcial mutó otro tramo — abortado.");
-        setRouting(false);
-        return;
-      }
-    }
-
-    segsRef.current = next;
-    setSegments(next);
-    const reproj = reprojectCuesOnTrack(cuesRef.current, next);
-    cuesRef.current = reproj;
-    setCues(reproj);
-    syncMap(next);
-    pushHist(next);
-    setRouting(false);
-  }, [syncMap, pushHist]);
-
-  // ── Actions ───────────────────────────────────────────────────────────────
-
-  const handleUndo = useCallback(() => {
-    const newIdx = Math.max(0, histIdxRef.current - 1);
-    histIdxRef.current = newIdx;
-    setHistIdx(newIdx);
-    const restored: Segment[] = JSON.parse(JSON.stringify(histRef.current[newIdx]));
-    segsRef.current = restored;
-    setSegments(restored);
-    syncMap(restored);
-  }, [syncMap]);
-
-  const handleRedo = useCallback(() => {
-    const newIdx = Math.min(histRef.current.length - 1, histIdxRef.current + 1);
-    histIdxRef.current = newIdx;
-    setHistIdx(newIdx);
-    const restored: Segment[] = JSON.parse(JSON.stringify(histRef.current[newIdx]));
-    segsRef.current = restored;
-    setSegments(restored);
-    syncMap(restored);
-  }, [syncMap]);
-
-  // Ctrl+Z / Ctrl+Y
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const mod = e.ctrlKey || e.metaKey;
-      if (!mod) return;
-      const key = e.key.toLowerCase();
-      if (key === "z" && !e.shiftKey) {
+      const meta = e.ctrlKey || e.metaKey;
+      if (meta && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        handleUndo();
-      } else if (key === "y" || (key === "z" && e.shiftKey)) {
+        if (e.shiftKey) engineRef.current.redo();
+        else engineRef.current.undo();
+        redraw();
+      } else if (meta && e.key.toLowerCase() === "y") {
         e.preventDefault();
-        handleRedo();
+        engineRef.current.redo();
+        redraw();
+      } else if (e.key === "Escape") {
+        setTool("none");
+        setPanel("none");
+        setPrompt(null);
+        setAltPreview(null);
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        const a = visibleAnchors(engineRef.current.doc, 22);
+        if (a.length) {
+          const last = a[a.length - 1];
+          engineRef.current.removeAnchor(last.trackIndex, last.segmentIndex, last.pointIndex);
+          redraw();
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleUndo, handleRedo]);
+  });
 
-  const handleClear = useCallback(() => {
-    const upd = segsRef.current.map(s =>
-      s.id !== activeIdRef.current
-        ? s
-        : { ...s, waypoints: [], waypointKinds: [], routePoints: [], routingFailed: false, absurdDetour: false },
-    );
-    segsRef.current = upd;
-    setSegments(upd);
-    setActiveWpt(null);
-    syncMap(upd, null);
-    pushHist(upd);
-  }, [syncMap, pushHist]);
-
-  const handleCloseLoop = useCallback(async () => {
-    const seg = segsRef.current.find(s => s.id === activeIdRef.current);
-    if (!seg || seg.waypoints.length < 3) return;
-    const closed: LngLat[] = [...seg.waypoints, seg.waypoints[0]];
-    const closedKinds: WaypointKind[] = [...ensureWaypointKinds(seg), "via"];
-    const gen = ++routeGenerationRef.current;
-    setRouting(true);
-    setRouteError(null);
-    const sm = parseRouteSegmentMode(
-      seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
-    );
-    const routed = await routeForMode(closed, transportModeRef.current, sm);
-    if (gen !== routeGenerationRef.current) return;
-    if (!routed.ok) setRouteError(routed.message ?? "No se pudo cerrar el bucle.");
-    const upd = segsRef.current.map(s =>
-      s.id === activeIdRef.current
-        ? {
-            ...s,
-            waypoints: closed,
-            waypointKinds: closedKinds,
-            routePoints: routed.ok ? routed.points : [],
-            routingFailed: !routed.ok,
-            absurdDetour: !!routed.absurd,
-          }
-        : s,
-    );
-    segsRef.current = upd;
-    setSegments(upd);
-    syncMap(upd);
-    pushHist(upd);
-    setRouting(false);
-  }, [syncMap, pushHist]);
-
-  const applyActiveWaypoints = useCallback(async (nextWpts: LngLat[], reroute: boolean) => {
-    const aId = activeIdRef.current;
-    const seg = segsRef.current.find((s) => s.id === aId);
-    if (!seg) return;
-    const kinds = ensureWaypointKinds(seg);
-    const nextKinds = nextWpts.map((_, i) => kinds[Math.min(i, kinds.length - 1)] ?? "via");
-    const sm = parseRouteSegmentMode(
-      seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
-    );
-    const gen = ++routeGenerationRef.current;
-    setRouting(reroute && isRoutedSegmentMode(sm) && nextWpts.length >= 2);
-    setRouteError(null);
-    let routedPts = reverseLngLats(seg.routePoints.length >= 2 ? seg.routePoints : nextWpts);
-    if (!reroute) {
-      routedPts = nextWpts;
-    } else if (isRoutedSegmentMode(sm) && nextWpts.length >= 2) {
-      const routed = await routeForMode(nextWpts, transportModeRef.current, sm);
-      if (gen !== routeGenerationRef.current) return;
-      if (!routed.ok) {
-        setRouteError(routed.message ?? "No se pudo recalcular la ruta.");
-        setRouting(false);
-        return;
-      }
-      routedPts = routed.points;
-    }
-    if (gen !== routeGenerationRef.current) return;
-    const upd = segsRef.current.map((s) =>
-      s.id === aId
-        ? {
-            ...s,
-            waypoints: nextWpts,
-            waypointKinds: nextKinds,
-            routePoints: routedPts,
-            routingFailed: false,
-          }
-        : s,
-    );
-    segsRef.current = upd;
-    setSegments(upd);
-    syncMap(upd);
-    pushHist(upd);
-    setRouting(false);
-  }, [syncMap, pushHist]);
-
-  const handleReverseRoute = useCallback(() => {
-    const seg = segsRef.current.find((s) => s.id === activeIdRef.current);
-    if (!seg || seg.waypoints.length < 2) return;
-    const next = reverseLngLats(seg.waypoints);
-    const kinds = [...ensureWaypointKinds(seg)].reverse();
-    const routed = reverseLngLats(seg.routePoints.length >= 2 ? seg.routePoints : seg.waypoints);
-    const upd = segsRef.current.map((s) =>
-      s.id === activeIdRef.current
-        ? { ...s, waypoints: next, waypointKinds: kinds, routePoints: routed }
-        : s,
-    );
-    segsRef.current = upd;
-    setSegments(upd);
-    syncMap(upd);
-    pushHist(upd);
-  }, [syncMap, pushHist]);
-
-  const handleRoundTrip = useCallback(() => {
-    const seg = segsRef.current.find((s) => s.id === activeIdRef.current);
-    if (!seg || seg.waypoints.length < 2) return;
-    const next = roundTripLngLats(seg.waypoints);
-    const kinds = ensureWaypointKinds(seg);
-    const nextKinds = [...kinds, ...[...kinds].reverse().slice(1)];
-    const base = seg.routePoints.length >= 2 ? seg.routePoints : seg.waypoints;
-    const routed = roundTripLngLats(base);
-    const upd = segsRef.current.map((s) =>
-      s.id === activeIdRef.current
-        ? { ...s, waypoints: next, waypointKinds: nextKinds, routePoints: routed }
-        : s,
-    );
-    segsRef.current = upd;
-    setSegments(upd);
-    syncMap(upd);
-    pushHist(upd);
-  }, [syncMap, pushHist]);
-
-  const handleBackToStart = useCallback(async () => {
-    const seg = segsRef.current.find((s) => s.id === activeIdRef.current);
-    if (!seg || seg.waypoints.length < 2) return;
-    const start = seg.waypoints[0];
-    const last = seg.waypoints[seg.waypoints.length - 1];
-    if (haversineKm(start, last) * 1000 < 25) return;
-    await applyActiveWaypoints([...seg.waypoints, start], true);
-  }, [applyActiveWaypoints]);
-
-  const handleRotateLoopStart = useCallback(() => {
-    const seg = segsRef.current.find((s) => s.id === activeIdRef.current);
-    if (!seg || seg.waypoints.length < 3) return;
-    const idx =
-      activeWptRef.current?.segId === seg.id ? activeWptRef.current.idx : 0;
-    const next = rotateLoopStart(seg.waypoints, idx);
-    const upd = segsRef.current.map((s) =>
-      s.id === activeIdRef.current
-        ? { ...s, waypoints: next, waypointKinds: ensureWaypointKinds({ ...s, waypoints: next }), routePoints: rotateLoopStart(s.routePoints.length >= 2 ? s.routePoints : next, idx) }
-        : s,
-    );
-    segsRef.current = upd;
-    setSegments(upd);
-    syncMap(upd);
-    pushHist(upd);
-  }, [syncMap, pushHist]);
-
-  const handleAddSeg = useCallback(() => {
-    const idx = segsRef.current.length % COLORS.length;
-    const seg = mkSeg(COLORS[idx].value);
-    const upd = [...segsRef.current, seg];
-    segsRef.current = upd;
-    setSegments(upd);
-    setActiveId(seg.id);
-    activeIdRef.current = seg.id;
-    pushHist(upd);
-  }, [pushHist]);
-
-  const handleDeleteSeg = useCallback((segId: string) => {
-    let upd = segsRef.current.filter(s => s.id !== segId);
-    if (upd.length === 0) { upd = [mkSeg()]; }
-    if (activeIdRef.current === segId) {
-      setActiveId(upd[0].id);
-      activeIdRef.current = upd[0].id;
-    }
-    segsRef.current = upd;
-    setSegments(upd);
-    setActiveWpt(null);
-    syncMap(upd, null);
-    pushHist(upd);
-  }, [syncMap, pushHist]);
-
-  const handleColor = useCallback((segId: string, color: string) => {
-    const safe = ensureMinBrightness(color);
-    const upd = segsRef.current.map(s => s.id === segId ? { ...s, color: safe } : s);
-    segsRef.current = upd;
-    setSegments(upd);
-    syncMap(upd);
-    pushHist(upd); // color changes enter undo stack
-  }, [syncMap, pushHist]);
-
-  const handleRenameSeg = useCallback((segId: string, name: string) => {
-    const upd = segsRef.current.map(s => s.id === segId ? { ...s, name } : s);
-    segsRef.current = upd;
-    setSegments(upd);
-    pushHist(upd);
-  }, [pushHist]);
-
-  const handleDeleteWaypoint = useCallback(async (segId: string, idx: number) => {
-    const upd = segsRef.current.map(s => {
-      if (s.id !== segId) return s;
-      const wpts = s.waypoints.filter((_, i) => i !== idx);
-      const kinds = ensureWaypointKinds(s).filter((_, i) => i !== idx);
-      return { ...s, waypoints: wpts, waypointKinds: kinds, routePoints: wpts.length < 2 ? [] : s.routePoints };
-    });
-    segsRef.current = upd;
-    setSegments(upd);
-    setActiveWpt(null);
-    activeWptRef.current = null;
-
-    const seg = upd.find(s => s.id === segId);
-    if (seg && seg.waypoints.length >= 2) {
-      const pk = seg.pathKind ?? "routed";
-      if (pk === "track") {
-        syncMap(upd, null);
-        pushHist(upd);
-        return;
-      }
-      if (pk === "freehand") {
-        const r = upd.map(s =>
-          s.id === segId
-            ? { ...s, routePoints: [...s.waypoints], routingFailed: false }
-            : s,
-        );
-        segsRef.current = r;
-        setSegments(r);
-        syncMap(r, null);
-        pushHist(r);
-        return;
-      }
-      setRouting(true);
-      const gen = ++routeGenerationRef.current;
-      const smDel = parseRouteSegmentMode(
-        seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+  const applyImportedGeometry = useCallback((xml: string) => {
+    const parsed = engineRef.current.loadXml(xml);
+    capsuleRef.current = parsed.doc.capsule;
+    if (parsed.doc.capsule) engineRef.current.doc.capsule = parsed.doc.capsule;
+    setTitle(parsed.doc.name);
+    redraw();
+    const line = lngLatsOf(engineRef.current.doc);
+    if (line.length && mapRef.current) {
+      const b = line.reduce(
+        (acc, p) => ({
+          minX: Math.min(acc.minX, p[0]),
+          minY: Math.min(acc.minY, p[1]),
+          maxX: Math.max(acc.maxX, p[0]),
+          maxY: Math.max(acc.maxY, p[1]),
+        }),
+        { minX: 180, minY: 90, maxX: -180, maxY: -90 },
       );
-      const routed = await routeForMode(seg.waypoints, transportModeRef.current, smDel);
-      if (gen !== routeGenerationRef.current) return;
-      if (!routed.ok) setRouteError(routed.message ?? "Punto inalcanzable.");
-      const r = upd.map(s => s.id === segId ? {
-        ...s,
-        routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
-        routingFailed: !routed.ok,
-        absurdDetour: !!routed.absurd,
-      } : s);
-      segsRef.current = r;
-      setSegments(r);
-      const reproj = reprojectCuesOnTrack(cuesRef.current, r);
-      cuesRef.current = reproj;
-      setCues(reproj);
-      syncMap(r, null);
-      pushHist(r);
-      setRouting(false);
-    } else {
-      syncMap(upd, null);
-      pushHist(upd);
+      mapRef.current.fitBounds([[b.minX, b.minY], [b.maxX, b.maxY]], { padding: 60, duration: 400 });
     }
-  }, [syncMap, pushHist]);
+    return parsed;
+  }, [redraw]);
 
-  const handleReorderWaypoint = useCallback(async (segId: string, idx: number, dir: -1 | 1) => {
-    const target = idx + dir;
-    const seg0 = segsRef.current.find(s => s.id === segId);
-    if (!seg0 || target < 0 || target >= seg0.waypoints.length) return;
-    const upd = segsRef.current.map(s => {
-      if (s.id !== segId) return s;
-      const wpts = [...s.waypoints];
-      const kinds = ensureWaypointKinds(s);
-      const tmp = wpts[idx];
-      wpts[idx] = wpts[target];
-      wpts[target] = tmp;
-      const tmpK = kinds[idx];
-      kinds[idx] = kinds[target];
-      kinds[target] = tmpK;
-      return { ...s, waypoints: wpts, waypointKinds: kinds };
-    });
-    segsRef.current = upd;
-    setActiveWpt({ segId, idx: target });
-    activeWptRef.current = { segId, idx: target };
-
-    const seg = upd.find(s => s.id === segId)!;
-    if (seg.waypoints.length >= 2) {
-      const pk = seg.pathKind ?? "routed";
-      if (pk === "freehand") {
-        const r = upd.map(s =>
-          s.id === segId
-            ? { ...s, routePoints: [...s.waypoints], routingFailed: false }
-            : s,
-        );
-        segsRef.current = r;
-        setSegments(r);
-        syncMap(r);
-        pushHist(r);
-        return;
-      }
-      if (pk === "track") {
-        setSegments(upd);
-        syncMap(upd);
-        pushHist(upd);
-        return;
-      }
-      setRouting(true);
-      const gen = ++routeGenerationRef.current;
-      const smOrd = parseRouteSegmentMode(
-        seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
-      );
-      const routed = await routeForMode(seg.waypoints, transportModeRef.current, smOrd);
-      if (gen !== routeGenerationRef.current) return;
-      const r = upd.map(s => s.id === segId ? {
-        ...s,
-        routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
-        routingFailed: !routed.ok,
-        absurdDetour: !!routed.absurd,
-      } : s);
-      segsRef.current = r;
-      setSegments(r);
-      syncMap(r);
-      pushHist(r);
-      setRouting(false);
-    } else {
-      setSegments(upd);
-      syncMap(upd);
-      pushHist(upd);
-    }
-  }, [syncMap, pushHist]);
-
-  const handleLocate = useCallback(() => {
-    if (!mapRef.current) return;
-
-    // App embed: NavRide owns location — never ask browser permissions.
-    if (embedNavRideApp) {
-      setLocating(true);
-      setRouteError(null);
-      const requestId = newBridgeRequestId();
-      pendingLocateReqRef.current = requestId;
-      postToNavRideApp("REQUEST_CURRENT_LOCATION", {}, requestId);
-      // Soft timeout if App never answers (bridge broken).
-      window.setTimeout(() => {
-        if (pendingLocateReqRef.current !== requestId) return;
-        pendingLocateReqRef.current = null;
-        setLocating(false);
-        setRouteError("No se ha podido obtener tu ubicación.");
-      }, 8000);
+  const onOpenFile = async (file: File) => {
+    const text = await file.text();
+    const parsed = parseGpxFile(text);
+    if (!parsed.recoverable) {
+      setStatus(parsed.issues[0] ?? "GPX no válido.");
       return;
     }
+    applyImportedGeometry(text);
+    capsuleRef.current = parsed.capsule;
+  };
 
-    if (!navigator.geolocation) {
-      setRouteError("Geolocalización no disponible en este navegador.");
-      return;
-    }
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        const ll: LngLat = [coords.longitude, coords.latitude];
-        setUserLngLat(ll);
-        syncUserMarker(ll);
-        mapRef.current?.flyTo({
-          center: ll,
-          zoom: 15,
-          duration: 1200,
-        });
-        setLocating(false);
-        if (coords.accuracy > 80) {
-          setRouteError("Precisión GPS aún baja — espera unos segundos.");
-        } else {
-          setRouteError(null);
-        }
-      },
-      (err) => {
-        setLocating(false);
-        if (err.code === err.PERMISSION_DENIED) {
-          setRouteError("Ubicación denegada. Activa el permiso de geolocalización en el navegador.");
-        } else if (err.code === err.POSITION_UNAVAILABLE) {
-          setRouteError("Ubicación no disponible en este momento.");
-        } else {
-          setRouteError("No se pudo obtener tu ubicación. Revisa permisos del navegador.");
-        }
-      },
-      { enableHighAccuracy: true, timeout: 12000 },
-    );
-  }, [syncUserMarker, embedNavRideApp]);
-
-  const applyAppCurrentLocation = useCallback((payload: Record<string, unknown> | undefined) => {
-    const lat = Number(payload?.latitude);
-    const lon = Number(payload?.longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      setLocating(false);
-      setRouteError("No se ha podido obtener tu ubicación.");
-      return;
-    }
-    const ll: LngLat = [lon, lat];
-    setUserLngLat(ll);
-    syncUserMarker(ll);
-    const zoom = mapRef.current?.getZoom?.() ?? 15;
-    mapRef.current?.flyTo({
-      center: ll,
-      zoom: Math.max(zoom, 14),
-      duration: 1000,
-    });
-    setLocating(false);
-    setRouteError(null);
-  }, [syncUserMarker]);
-
-  const applyAppLocationError = useCallback((payload: Record<string, unknown> | undefined) => {
-    setLocating(false);
-    const reason = String(payload?.reason ?? "LOCATION_UNAVAILABLE");
-    if (reason === "PERMISSION_DENIED") {
-      setRouteError("NavRide necesita permiso de ubicación.");
-    } else {
-      setRouteError("No se ha podido obtener tu ubicación.");
-    }
-  }, []);
-
-  const handleFitRoute = useCallback(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const allPts = segsRef.current.flatMap(s =>
-      s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints : s.waypoints,
-    );
-    if (allPts.length < 2) return;
-    const lngs = allPts.map(p => p[0]);
-    const lats  = allPts.map(p => p[1]);
-    map.fitBounds(
-      [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 64, duration: 900 },
-    );
-  }, []);
-
-  const handleDownload = useCallback(() => {
-    const allPts = segments.flatMap(s =>
-      s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints : [],
-    );
-    if (allPts.length < 2) return;
-    const pts = segments.flatMap(s =>
-      s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints : [],
-    );
-    const gpx  = exportGpx(segments, routeTitle, cues, capsuleRef.current);
-    const routeJson = buildRouteJson(segments, routeTitle, cues, pts);
-    if (embedNavRideApp) {
-      postToNavRideApp("EXPORT_GPX", {
-        gpxXml: gpx,
-        fileName: `${routeTitle.replace(/\s+/g, "_")}.gpx`,
-        route: routeJson as unknown as Record<string, unknown>,
-      });
-      return;
-    }
-    const blob = new Blob([gpx], { type: "application/gpx+xml" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = `${routeTitle.replace(/\s+/g, "_")}.gpx`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [segments, routeTitle, cues, embedNavRideApp]);
-
-  const applyImportedGeometry = useCallback((
-    geometry: { lat: number; lon: number }[],
-    extensions: NavRideRoute | null,
-    asTrackOnly: boolean,
-    capsule?: RouteCapsule | null,
-  ) => {
-    if (capsule !== undefined) {
-      capsuleRef.current = capsule;
-    }
-    const pts: LngLat[] = geometry.map((p) => [p.lon, p.lat]);
-    if (pts.length < 1) return;
-
-    const color = ensureMinBrightness(COLORS[0].value);
-    const extSegs = extensions?.segments ?? [];
-
-    // Reopen editor-authored multi-segment routes with explicit modes (not silent track collapse).
-    if (
-      !asTrackOnly &&
-      extSegs.length > 0 &&
-      extSegs.some((s) => s.routeSegmentMode || s.pathKind === "freehand" || s.pathKind === "routed")
-    ) {
-      const rebuilt: Segment[] = extSegs.map((es, i) => {
-        const start = Math.max(0, es.startIndex ?? 0);
-        const end = Math.min(pts.length - 1, es.endIndex ?? pts.length - 1);
-        const slice = pts.slice(start, end + 1);
-        const mode = parseRouteSegmentMode(
-          es.routeSegmentMode ??
-            (es.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
-        );
-        const wpts =
-          slice.length <= 2
-            ? slice
-            : [slice[0], slice[slice.length - 1]];
-        return {
-          id: es.segmentId || uid(),
-          name: es.name || `Segmento ${i + 1}`,
-          color: ensureMinBrightness(es.customColor || COLORS[i % COLORS.length].value),
-          waypoints: wpts.length >= 1 ? wpts : [],
-          waypointKinds: wpts.map(() => "via" as WaypointKind),
-          routePoints: slice.length >= 2 ? slice : [],
-          routingFailed: slice.length < 2,
-          pathKind: (es.pathKind === "track"
-            ? "track"
-            : pathKindForSegmentMode(mode)) as "routed" | "freehand" | "track",
-          routeSegmentMode: mode,
-        };
-      });
-      if (rebuilt.length > 0) {
-        segsRef.current = rebuilt;
-        setSegments(rebuilt);
-        setActiveId(rebuilt[0].id);
-        activeIdRef.current = rebuilt[0].id;
-        const sm0 = rebuilt[0].routeSegmentMode ?? DEFAULT_ROUTE_SEGMENT_MODE;
-        setDrawMode(sm0);
-        drawModeRef.current = sm0;
-        if (extensions?.name) setRouteTitle(extensions.name);
-        if (extensions?.cues?.length) setCues(extensions.cues);
-        else setCues([]);
-        syncMap(rebuilt);
-        pushHist(rebuilt);
-        setImportDialog(null);
-        setRouteError("GPX importado. Pulsa Revisar ruta para comprobar la compatibilidad con el modo activo.");
-        return;
-      }
-    }
-
-    const viaFromExt = extensions?.viaPoints ?? [];
-    const shpFromExt = extensions?.shapingPoints ?? [];
-    let waypoints: LngLat[] = [];
-    let waypointKinds: WaypointKind[] = [];
-
-    if (!asTrackOnly && (viaFromExt.length > 0 || shpFromExt.length > 0)) {
-      const merged = [
-        ...viaFromExt.map((p) => ({ ll: [p.lon, p.lat] as LngLat, kind: "via" as WaypointKind })),
-        ...shpFromExt.map((p) => ({ ll: [p.lon, p.lat] as LngLat, kind: "shaping" as WaypointKind })),
-      ];
-      waypoints = merged.map((m) => m.ll);
-      waypointKinds = merged.map((m) => m.kind);
-    } else {
-      // Sample as track waypoints (cap for UI)
-      const step = Math.max(1, Math.floor(pts.length / 40));
-      for (let i = 0; i < pts.length; i += step) {
-        waypoints.push(pts[i]);
-        waypointKinds.push("via");
-      }
-      if (waypoints.length > 0) {
-        const last = pts[pts.length - 1];
-        const prev = waypoints[waypoints.length - 1];
-        if (prev[0] !== last[0] || prev[1] !== last[1]) {
-          waypoints.push(last);
-          waypointKinds.push("via");
-        }
-      }
-    }
-
-    const firstMode = parseRouteSegmentMode(
-      extSegs[0]?.routeSegmentMode ??
-        (asTrackOnly ? "FOLLOW_ROAD" : extSegs[0]?.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
-    );
-    const seg: Segment = {
-      id: uid(),
-      name: extensions?.name || "Importado",
-      color,
-      waypoints,
-      waypointKinds,
-      routePoints: pts.length >= 2 ? pts : [],
-      routingFailed: pts.length < 2,
-      pathKind: asTrackOnly ? "track" : pathKindForSegmentMode(firstMode),
-      routeSegmentMode: asTrackOnly ? DEFAULT_ROUTE_SEGMENT_MODE : firstMode,
-    };
-    const next = [seg];
-    segsRef.current = next;
-    setSegments(next);
-    setActiveId(seg.id);
-    activeIdRef.current = seg.id;
-    if (extensions?.name) setRouteTitle(extensions.name);
-    if (extensions?.cues?.length) setCues(extensions.cues);
-    else setCues([]);
-    syncMap(next);
-    pushHist(next);
-    setImportDialog(null);
-    setRouteError("GPX importado. Pulsa Revisar ruta para comprobar la compatibilidad con el modo activo.");
-  }, [syncMap, pushHist]);
-
-  const handleGpxFile = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = typeof reader.result === "string" ? reader.result : "";
-      const parsed = parseGpxFile(text);
-      if (!parsed.recoverable) {
-        setRouteError(parsed.issues[0] ?? "GPX no válido.");
-        setImportDialog(null);
-        return;
-      }
-      if (parsed.issues.length === 0 && parsed.geometry.length >= 2) {
-        applyImportedGeometry(
-          parsed.geometry,
-          parsed.extensions,
-          false,
-          parsed.capsule,
-        );
-        return;
-      }
-      // Recoverable UX instead of only INVALID
-      setImportDialog({
-        issues: parsed.issues.length ? parsed.issues : ["GPX parcial — elige cómo importar."],
-        geometry: parsed.geometry,
-        extensions: parsed.extensions,
-        capsule: parsed.capsule,
-        fileName: file.name,
-      });
-    };
-    reader.onerror = () => setRouteError("No se pudo leer el archivo GPX.");
-    reader.readAsText(file);
-  }, [applyImportedGeometry]);
-
-  const handleToggleViaShaping = useCallback((segId: string, idx: number) => {
-    const upd = segsRef.current.map((s) => {
-      if (s.id !== segId) return s;
-      const kinds = ensureWaypointKinds(s);
-      kinds[idx] = toggleViaShaping(kinds[idx] ?? "via");
-      return { ...s, waypointKinds: kinds };
-    });
-    segsRef.current = upd;
-    setSegments(upd);
-    pushHist(upd);
-  }, [pushHist]);
-
-  const handleAddCue = useCallback(() => {
-    const msg = cueDraftMessage.trim();
-    if (!msg) return;
-    setPlaceNotePending(true);
-    placeNotePendingRef.current = true;
-    setRouteError("Pulsa en el mapa para colocar la nota exactamente ahí.");
-  }, [cueDraftMessage]);
-
-  const handleDeleteCue = useCallback((cueId: string) => {
-    setCues((prev) => prev.filter((c) => c.cueId !== cueId));
-    setSelectedCueId((cur) => (cur === cueId ? null : cur));
-  }, []);
-
-  const handleUpdateCueSeverity = useCallback((cueId: string, severity: NavRideCueSeverity) => {
-    setCues((prev) =>
-      prev.map((c) =>
-        c.cueId === cueId
-          ? {
-              ...c,
-              severity,
-              title: cueSeverityLabel(severity),
-            }
-          : c,
-      ),
-    );
-  }, []);
-
-  const routeSignature = useCallback(() => {
-    const allPts = segments.flatMap(s =>
-      s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints : [],
-    );
-    return `${routeTitle}|${allPts.length}|${totalKm(segments).toFixed(3)}`;
-  }, [segments, routeTitle]);
-
-  const persistRoute = useCallback(async (): Promise<string | null> => {
-    const allPts = segments.flatMap(s =>
-      s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints : [],
-    );
-    if (allPts.length < 2) {
-      setUploadMsg({
-        ok: false,
-        text: "No hay geometría enrutada válida para guardar (evita líneas rectas fallidas).",
-      });
-      return null;
-    }
-
-    const gpx = exportGpx(segments, routeTitle, cues, capsuleRef.current);
+  const persistRoute = useCallback(async () => {
+    const gpx = exportGpx(engineRef.current.doc, capsuleRef.current);
     const res = await fetch("/api/gpx/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
-        title: routeTitle,
+        title,
         gpxXml: gpx,
-        waypointsCount: allPts.length,
-        distanceM: totalKm(segments) * 1000,
+        waypointsCount: allPoints(engineRef.current.doc).length,
+        distanceM: stats.distanceM,
         existingRouteId: savedRouteId,
       }),
     });
-
-    const result = (await res.json()) as
-      | { ok: true; routeId: string; storageUrl: string }
-      | { ok: false; error: string };
-
+    const result = (await res.json()) as { ok: true; routeId: string } | { ok: false; error: string };
     if (!result.ok) {
       setUploadMsg({ ok: false, text: result.error });
       return null;
     }
-
     setSavedRouteId(result.routeId);
-    setSavedSignature(routeSignature());
-    clearDraft();
-    setDraftBanner(null);
     return result.routeId;
-  }, [segments, routeTitle, routeSignature, savedRouteId, cues]);
+  }, [doc, savedRouteId, stats.distanceM, title]);
 
   const persistToApp = useCallback((alsoOpen: boolean) => {
-    const allPts = segments.flatMap(s =>
-      s.routePoints.length >= 2 && !s.routingFailed ? s.routePoints : [],
-    );
-    if (allPts.length < 2) {
-      setUploadMsg({
-        ok: false,
-        text: "No hay geometría enrutada válida para guardar.",
-      });
-      return;
-    }
-    const gpx = exportGpx(segments, routeTitle, cues, capsuleRef.current);
-    const routeJson = buildRouteJson(segments, routeTitle, cues, allPts);
+    const gpx = exportGpx(engineRef.current.doc, capsuleRef.current);
+    const routeJson = buildRouteJson(engineRef.current.doc, title, savedRouteId);
     postToNavRideApp(alsoOpen ? "OPEN_IN_NAVRIDE" : "SAVE_ROUTE", {
       gpxXml: gpx,
       route: routeJson as unknown as Record<string, unknown>,
-      name: routeTitle,
+      name: title,
       routeId: savedRouteId,
-      distanceM: totalKm(segments) * 1000,
-      waypointsCount: allPts.length,
+      distanceM: stats.distanceM,
+      waypointsCount: allPoints(engineRef.current.doc).length,
     });
-    setSavedSignature(routeSignature());
-    clearDraft();
-    setDraftBanner(null);
-    setUploadMsg({
-      ok: true,
-      text: alsoOpen
-        ? "Enviando a NavRide…"
-        : "Guardando en NavRide…",
-    });
-  }, [segments, routeTitle, cues, savedRouteId, routeSignature]);
+  }, [doc, savedRouteId, stats.distanceM, title]);
 
-  const handleSave = useCallback(async () => {
-    if (saving || uploading) return;
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    setUploadMsg(null);
     if (embedNavRideApp) {
-      setSaving(true);
-      setUploadMsg(null);
       persistToApp(false);
       setSaving(false);
       return;
     }
-    setSaving(true);
-    setUploadMsg(null);
     const id = await persistRoute();
-    if (id) {
-      const isUpdate = savedRouteId != null && savedRouteId === id;
-      setUploadMsg({
-        ok: true,
-        text: isUpdate
-          ? "Ruta actualizada en la web. Visible al instante en NavRide → menú GPX Web."
-          : "Ruta guardada en la web. Visible al instante en NavRide → menú GPX Web.",
-      });
-    }
+    if (id) setUploadMsg({ ok: true, text: "Ruta guardada. Visible en NavRide → GPX Web." });
     setSaving(false);
-  }, [persistRoute, saving, uploading, savedRouteId, embedNavRideApp, persistToApp]);
+  };
 
-  const handleLaunch = useCallback(async () => {
-    if (saving || uploading) return;
-    setUploading(true);
-    setUploadMsg(null);
-
-    if (embedNavRideApp) {
-      persistToApp(true);
-      setUploading(false);
-      return;
-    }
-
-    try {
-      let routeId = savedRouteId;
-      const sig = routeSignature();
-      if (!routeId || savedSignature !== sig) {
-        routeId = await persistRoute();
-      }
-      if (!routeId) {
-        setUploading(false);
-        return;
-      }
-
-      const links = buildRouteDeepLinks(routeId);
-      const opened = tryOpenNavRideApp(routeId);
-      const copied = await copyRouteLink(routeId);
-
-      setUploadMsg({
-        ok: true,
-        text: opened
-          ? "Ruta guardada. Abriendo NavRide… (misma cuenta Supabase en la app)."
-          : copied
-            ? `Ruta guardada. Enlace copiado. Ábrelo en el móvil con NavRide instalada: ${links.https}`
-            : `Ruta guardada. Abre en el móvil: ${links.https}`,
-      });
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Error desconocido";
-      setUploadMsg({ ok: false, text: `Error inesperado: ${msg}` });
-    }
-    setUploading(false);
-  }, [persistRoute, routeSignature, savedRouteId, savedSignature, saving, uploading, embedNavRideApp, persistToApp]);
-
-  // ── App embed bridge ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!embedNavRideApp) return;
     window.__navrideEmbedReady = true;
     postToNavRideApp("READY", {
-      capabilities: {
-        save: true,
-        exportGpx: true,
-        openInNavRide: true,
-        importGpx: true,
-        cloudSaveViaApp: true,
-      },
+      capabilities: { save: true, exportGpx: true, openInNavRide: true, importGpx: true, cloudSaveViaApp: true },
     });
     const unreg = registerAppToEditorHandler((msg: NavRideEditorBridgeMessage) => {
       if (msg.type === "LOAD_ROUTE") {
         const gpxXml = typeof msg.payload?.gpxXml === "string" ? msg.payload.gpxXml : "";
         if (!gpxXml) return;
         const parsed = parseGpxFile(gpxXml);
-        if (!parsed.recoverable || parsed.geometry.length < 2) {
-          setRouteError(parsed.issues[0] ?? "GPX no válido.");
+        if (!parsed.recoverable) {
+          setStatus(parsed.issues[0] ?? "GPX no válido.");
           return;
         }
-        applyImportedGeometry(
-          parsed.geometry,
-          parsed.extensions,
-          false,
-          parsed.capsule,
-        );
-        if (typeof msg.payload?.routeId === "string") {
-          setSavedRouteId(msg.payload.routeId);
-        }
-        setSavedSignature(routeSignature());
-        setUploadMsg({ ok: true, text: "Ruta cargada desde NavRide." });
-      }
-      if (msg.type === "SAVE_RESULT") {
-        const ok = msg.payload?.ok === true;
-        const routeId = typeof msg.payload?.routeId === "string" ? msg.payload.routeId : null;
-        if (ok && routeId) setSavedRouteId(routeId);
-        setUploadMsg({
-          ok,
-          text: ok
-            ? "Guardado en NavRide."
-            : String(msg.payload?.error ?? "No se pudo guardar."),
-        });
-        if (ok) {
-          setSavedSignature(routeSignature());
-          clearDraft();
-        }
-      }
-      if (msg.type === "CONFIG") {
-        // locale/units reserved — no-op for now
+        applyImportedGeometry(gpxXml);
+        if (parsed.capsule) capsuleRef.current = parsed.capsule;
+        if (typeof msg.payload?.routeId === "string") setSavedRouteId(msg.payload.routeId);
       }
       if (msg.type === "CURRENT_LOCATION") {
-        if (
-          pendingLocateReqRef.current &&
-          msg.requestId !== pendingLocateReqRef.current
-        ) {
-          return;
-        }
-        pendingLocateReqRef.current = null;
-        applyAppCurrentLocation(msg.payload);
-      }
-      if (msg.type === "CURRENT_LOCATION_ERROR") {
-        if (
-          pendingLocateReqRef.current &&
-          msg.requestId !== pendingLocateReqRef.current
-        ) {
-          return;
-        }
-        pendingLocateReqRef.current = null;
-        applyAppLocationError(msg.payload);
+        const lat = Number(msg.payload?.lat);
+        const lon = Number(msg.payload?.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        mapRef.current?.easeTo({ center: [lon, lat], zoom: 14 });
+        const src = mapRef.current?.getSource(SRC_USER);
+        if (src) src.setData({ type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [lon, lat] } }] });
       }
     });
-    return () => {
-      unreg();
-      window.__navrideEmbedReady = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embedNavRideApp, applyAppCurrentLocation, applyAppLocationError]);
+    return () => unreg();
+  }, [applyImportedGeometry, embedNavRideApp]);
 
   useEffect(() => {
-    if (!embedNavRideApp) return;
-    const dirty = routeSignature() !== savedSignature;
-    postToNavRideApp("DIRTY_STATE_CHANGED", { dirty });
-  }, [embedNavRideApp, segments, routeTitle, cues, savedSignature, routeSignature]);
+    postToNavRideApp("DIRTY_STATE_CHANGED", { dirty: doc.dirty });
+  }, [doc.dirty]);
 
-  // ── Derived ───────────────────────────────────────────────────────────────
-  const km            = totalKm(segments);
-  const totalWpts     = segments.reduce((a, s) => a + s.waypoints.length, 0);
-  const totalRoutePts = segments.reduce(
-    (a, s) => a + (s.routingFailed ? 0 : s.routePoints.length),
-    0,
-  );
-  const activeSeg     = segments.find(s => s.id === activeId) ?? segments[0];
-  const advanced = editorMode === "advanced";
-  const modeLabel = TRANSPORT_MODES.find(m => m.id === transportMode)?.label ?? transportMode;
-  const routeHealth   = analyzeRouteHealth(
-    segments.map((s) => ({
-      waypoints: s.waypoints,
-      routePoints: s.routingFailed ? [] : s.routePoints,
-      mode: transportMode,
-      routingFailed: s.routingFailed,
-    })),
-  );
+  useEffect(() => {
+    if (!poiOn || poiCats.length === 0) {
+      setPois([]);
+      return;
+    }
+    const m = mapRef.current;
+    if (!m) return;
+    const b = m.getBounds();
+    const gen = poiStore.current.bump();
+    fetchPoisBbox(poiCats, b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), gen, poiStore.current)
+      .then((r) => {
+        if (poiStore.current.isStale(r.generation)) return;
+        setPois(r.pois);
+      })
+      .catch(() => setStatus("Puntos de interés: tiempo de espera agotado."));
+  }, [poiOn, poiCats, mapStyleId]);
 
-  const restoreDraft = useCallback(() => {
-    const draft = loadDraft();
-    if (!draft?.segments || !Array.isArray(draft.segments)) return;
-    const restored = draft.segments as Segment[];
-    segsRef.current = restored;
-    setSegments(restored);
-    setRouteTitle(draft.routeTitle);
-    setTransportMode((draft.transportMode as TransportMode) || "moto");
-    setEditorMode(draft.editorMode === "advanced" ? "advanced" : "simple");
-    setDraftBanner(null);
-    syncMap(restored);
-    pushHist(restored);
-  }, [syncMap, pushHist]);
+  const runDoctor = async () => {
+    const line = lngLatsOf(engineRef.current.doc);
+    if (line.length < 2) return;
+    const fetched = await fetchWaysAlongRoute(line);
+    if (!fetched.ok) {
+      setStatus("Route Doctor: Overpass no disponible.");
+      return;
+    }
+    const a = auditRouteGeometry(line, fetched.ways, mode);
+    setAudit(a);
+    setPanel("tools");
+  };
 
-  const dismissDraft = useCallback(() => {
-    clearDraft();
-    setDraftBanner(null);
-  }, []);
+  const flyIssue = (issue: CompatibilityIssue) => {
+    setSelectedIssue(issue);
+    mapRef.current?.flyTo({ center: issue.midpoint, zoom: 16, duration: 600 });
+  };
 
-  // ── Sidebar content (shared: desktop aside + mobile drawer) ──────────────
-  const sidebarContent = (
-    <div className="p-4 flex flex-col gap-4">
+  const findAlt = async () => {
+    if (!prompt) return;
+    setFindingAlt(true);
+    const last = engineRef.current.lastPoint();
+    const click = pendingClick.current;
+    if (!last || !click) {
+      setFindingAlt(false);
+      return;
+    }
+    const fetched = await fetchWaysAround(click, 120);
+    const preferred = compatibleWaysOnly(fetched.ways, mode);
+    const path = routeOnOsmNetwork(preferred.length ? preferred : fetched.ways, [last.lon, last.lat], click, mode);
+    setAltPreview(path);
+    setFindingAlt(false);
+  };
 
-      {/* Header */}
-      <div>
-        <h2 className="text-sm font-bold text-white">NavRide Route Studio</h2>
-        <p className="text-xs text-white/40 mt-0.5">
-          {embedNavRideApp
-            ? "Mapa a pantalla completa · Clic · Deshacer último punto"
-            : "Mapa a pantalla completa · Clic · Deshacer (Ctrl+Z)"}
-        </p>
-      </div>
+  const acceptAlt = () => {
+    if (!altPreview || altPreview.length < 2) return;
+    const last = altPreview[altPreview.length - 1];
+    engineRef.current.addClick(last[1], last[0], altPreview);
+    setAltPreview(null);
+    setPrompt(null);
+    redraw();
+  };
 
-      {draftBanner && (
-        <div className="flex flex-col gap-1.5">
-          <button
-            type="button"
-            onClick={restoreDraft}
-            className="text-left text-xs rounded-lg border border-[#FF9500]/30 bg-[#FF9500]/10 px-3 py-2 text-[#FF9500]"
-          >
-            Recuperar borrador — {draftBanner}
-          </button>
-          <button
-            type="button"
-            onClick={dismissDraft}
-            className="text-[10px] text-white/35 hover:text-white/60 self-end"
-          >
-            Descartar borrador
-          </button>
-        </div>
-      )}
+  const locate = () => {
+    if (embedNavRideApp) {
+      postToNavRideApp("REQUEST_CURRENT_LOCATION", {}, newBridgeRequestId());
+      return;
+    }
+    navigator.geolocation?.getCurrentPosition((pos) => {
+      mapRef.current?.easeTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 14 });
+    });
+  };
 
-      <div className="flex gap-1 rounded-lg bg-white/5 p-1">
-        {(["simple", "advanced"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setEditorMode(m)}
-            className={`flex-1 rounded-md py-1.5 text-xs font-medium ${
-              editorMode === m ? "bg-[#FF5A1F] text-white" : "text-white/50"
-            }`}
-          >
-            {m === "simple" ? "Básico" : "Avanzado"}
+  const doSearch = async () => {
+    const q = search.trim();
+    if (!q) return;
+    const coord = q.match(/^\s*(-?\d+\.?\d*)\s*[, ]\s*(-?\d+\.?\d*)\s*$/);
+    if (coord) {
+      const lat = Number(coord[1]);
+      const lon = Number(coord[2]);
+      if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+        mapRef.current?.easeTo({ center: [lon, lat], zoom: 14 });
+        return;
+      }
+    }
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
+        { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) },
+      );
+      const json = (await res.json()) as { lon: string; lat: string }[];
+      if (json[0]) mapRef.current?.easeTo({ center: [Number(json[0].lon), Number(json[0].lat)], zoom: 13 });
+    } catch {
+      setStatus("Búsqueda no disponible.");
+    }
+  };
+
+  const barBtn = "h-9 px-2.5 rounded-lg text-xs font-medium bg-black/55 hover:bg-black/75 border border-white/10 backdrop-blur-md";
+  const sheet = embedNavRideApp
+    ? "absolute left-2 right-2 bottom-3 rounded-2xl bg-[#121214]/95 border border-white/10 p-3 max-h-[46vh] overflow-auto"
+    : "absolute top-16 right-3 w-72 rounded-xl bg-[#121214]/95 border border-white/10 p-3 max-h-[70vh] overflow-auto";
+
+  return (
+    <div
+      className="relative w-full h-full min-h-[100dvh] overflow-hidden bg-[#050608]"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        const f = e.dataTransfer.files[0];
+        if (f) void onOpenFile(f);
+      }}
+    >
+      <div ref={mapContainer} className="absolute inset-0" />
+
+      <div className={`absolute ${embedNavRideApp ? "top-2 left-2 right-2" : "top-3 left-1/2 -translate-x-1/2"} z-10 flex flex-wrap items-center justify-center gap-1`}>
+        <button type="button" className={barBtn} onClick={() => { engineRef.current.reset(title); capsuleRef.current = null; redraw(); }}><Plus size={14} /> Nueva</button>
+        <button type="button" className={barBtn} onClick={() => fileRef.current?.click()}><Upload size={14} /> Abrir</button>
+        <button type="button" className={barBtn} onClick={() => void handleSave()}>Guardar</button>
+        <button type="button" className={barBtn} disabled={!canUndo} onClick={() => { engineRef.current.undo(); redraw(); }}><Undo2 size={14} /></button>
+        <button type="button" className={barBtn} disabled={!canRedo} onClick={() => { engineRef.current.redo(); redraw(); }}><Redo2 size={14} /></button>
+        <button type="button" className={`${barBtn} ${panel === "tools" ? "bg-orange-600" : ""}`} onClick={() => setPanel(panel === "tools" ? "none" : "tools")}><Wrench size={14} /> Herramientas</button>
+        <button type="button" className={`${barBtn} ${panel === "layers" ? "bg-orange-600" : ""}`} onClick={() => setPanel(panel === "layers" ? "none" : "layers")}><Layers size={14} /> Capas</button>
+        {PROFILES.map((p) => (
+          <button key={p.id} type="button" className={`${barBtn} ${mode === p.id ? "bg-orange-600 text-white" : ""}`} onClick={() => setMode(p.id)}>
+            {p.icon} {p.label}
           </button>
         ))}
       </div>
 
-      {/* Activity / transport — always (basic) */}
-      <div className="flex flex-col gap-1.5">
-        <label className="text-xs text-white/40 uppercase tracking-widest">Actividad</label>
-        <div className="grid grid-cols-2 gap-1.5">
-          {TRANSPORT_MODES.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => handleTransportChange(m.id)}
-              className={`rounded-lg border px-2 py-2 text-xs text-left ${
-                transportMode === m.id
-                  ? "border-[#FF5A1F]/50 bg-[#FF5A1F]/10 text-white"
-                  : "border-white/10 text-white/50"
-              }`}
-            >
-              <span className="font-medium">{m.label}</span>
-            </button>
-          ))}
-        </div>
-        <label className="text-xs text-white/40 uppercase tracking-widest mt-1">Modo del tramo</label>
-        <div className="grid grid-cols-1 gap-1.5">
-          {ROUTE_SEGMENT_MODES.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => void handleSegmentModeChange(m.id)}
-              className={`rounded-lg border px-2 py-2 text-xs text-left ${
-                drawMode === m.id
-                  ? "border-[#FF5A1F]/50 bg-[#FF5A1F]/10 text-white"
-                  : "border-white/10 text-white/50"
-              }`}
-            >
-              <span className="font-medium">{m.label}</span>
-            </button>
-          ))}
-        </div>
-        <p className="text-[10px] text-white/35 leading-snug">
-          {ROUTE_SEGMENT_MODES.find((m) => m.id === drawMode)?.hint ?? ""}
-        </p>
-        {(transportMode === "moto" || transportMode === "car") && drawMode === "FOLLOW_ROAD" && (
-          <p className="text-[10px] text-white/35 leading-snug">
-            Moto/coche usan la red OSM completa. El perfil marca si un tramo está permitido; no se oculta del mapa.
-          </p>
-        )}
-      </div>
-
-      {/* Compact health in basic; details in advanced */}
-      <div
-        className={`rounded-lg px-3 py-2 text-xs border ${
-          routeHealth.health === "GOOD"
-            ? "border-green-500/30 text-green-400 bg-green-500/5"
-            : routeHealth.health === "REVIEW" || routeHealth.health === "DRAFT"
-              ? "border-[#FF9500]/30 text-[#FF9500] bg-[#FF9500]/5"
-              : "border-red-500/30 text-red-400 bg-red-500/5"
-        }`}
-      >
-        {routeHealth.health === "DRAFT"
-          ? (routeHealth.userMessage ?? "Borrador")
-          : `Salud: ${routeHealth.health}`}
-        {routeHealth.health !== "DRAFT" &&
-          (routeHealth.issues[0] ?? routeHealth.warnings[0]) && (
-          <p className="mt-1 opacity-80">
-            {routeHealth.issues[0] ?? routeHealth.warnings[0]}
-          </p>
-        )}
-      </div>
-
-      {routeError && (
-        <div className="text-xs rounded-lg px-3 py-2 bg-red-500/10 border border-red-500/20 text-red-300">
-          {routeError}
-        </div>
-      )}
-
-      {/* Route name */}
-      <div className="flex flex-col gap-1.5">
-        <label className="text-xs text-white/40 uppercase tracking-widest">Nombre</label>
+      <div className="absolute top-14 left-3 z-10 flex gap-1">
         <input
-          value={routeTitle}
-          onChange={e => setRouteTitle(e.target.value)}
-          className="rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-[#f97316]/50"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void doSearch()}
+          placeholder="Localidad, dirección, GPS"
+          className="h-9 w-52 rounded-lg bg-black/55 border border-white/10 px-2 text-xs"
         />
+        <button type="button" className={barBtn} onClick={() => void doSearch()}><Search size={14} /></button>
+        <button type="button" className={barBtn} onClick={locate}><Crosshair size={14} /> Mi ubicación</button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-xl bg-white/3 border border-white/8 p-2.5 text-center">
-          <p className="text-base font-bold text-white">{km.toFixed(2)}</p>
-          <p className="text-xs text-white/40">km</p>
-        </div>
-        <div className="rounded-xl bg-white/3 border border-white/8 p-2.5 text-center">
-          <p className="text-base font-bold text-white">{totalWpts}</p>
-          <p className="text-xs text-white/40">nodos</p>
-        </div>
-        <div className="rounded-xl bg-white/3 border border-white/8 p-2.5 text-center">
-          <p className="text-base font-bold text-white">{totalRoutePts}</p>
-          <p className="text-xs text-white/40">pts ruta</p>
-        </div>
-      </div>
+      <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml,text/xml" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void onOpenFile(f); }} />
 
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs text-white/40 uppercase tracking-widest">Herramientas</span>
-        <div className="grid grid-cols-2 gap-1.5">
-          <button type="button" onClick={handleReverseRoute}
-            disabled={!activeSeg || activeSeg.waypoints.length < 2}
-            className="rounded-lg border border-white/10 px-2 py-2 text-[11px] text-white/70 hover:text-white disabled:opacity-30 flex items-center gap-1.5">
-            <ArrowLeftRight size={12} /> Invertir
-          </button>
-          <button type="button" onClick={() => void handleBackToStart()}
-            disabled={!activeSeg || activeSeg.waypoints.length < 2}
-            className="rounded-lg border border-white/10 px-2 py-2 text-[11px] text-white/70 hover:text-white disabled:opacity-30 flex items-center gap-1.5">
-            <Home size={12} /> Volver al inicio
-          </button>
-          <button type="button" onClick={handleRoundTrip}
-            disabled={!activeSeg || activeSeg.waypoints.length < 2}
-            className="rounded-lg border border-white/10 px-2 py-2 text-[11px] text-white/70 hover:text-white disabled:opacity-30 flex items-center gap-1.5">
-            <Repeat size={12} /> Ida y vuelta
-          </button>
-          <button type="button" onClick={() => void handleCloseLoop()}
-            disabled={!activeSeg || activeSeg.waypoints.length < 3}
-            className="rounded-lg border border-white/10 px-2 py-2 text-[11px] text-white/70 hover:text-white disabled:opacity-30 flex items-center gap-1.5">
-            <RotateCw size={12} /> Cerrar circuito
-          </button>
-          <button type="button" onClick={handleRotateLoopStart}
-            disabled={!activeSeg || activeSeg.waypoints.length < 3}
-            className="col-span-2 rounded-lg border border-white/10 px-2 py-2 text-[11px] text-white/70 hover:text-white disabled:opacity-30">
-            Cambiar inicio del loop
-          </button>
+      {routing && (
+        <div className="absolute top-14 right-3 z-10 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-[11px] text-white/80">
+          <Loader2 size={12} className="animate-spin" /> Calculando…
         </div>
-      </div>
+      )}
 
-      {/* Segments */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-white/40 uppercase tracking-widest">Segmentos</span>
-          {advanced && (
-            <button onClick={handleAddSeg}
-              className="flex items-center gap-1 text-xs text-[#f97316] hover:text-[#fb923c] transition">
-              <Plus size={12} /> Nuevo
+      {panel === "tools" && (
+        <div className={sheet}>
+          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Herramientas</p>
+          <div className="grid grid-cols-2 gap-1.5 text-xs">
+            <button className={barBtn} onClick={() => setTrace(trace === "FOLLOW_WAYS" ? "STRAIGHT" : "FOLLOW_WAYS")}>
+              {trace === "FOLLOW_WAYS" ? "Seguir vías" : "Línea directa"}
             </button>
-          )}
-        </div>
-
-        {segments.map(seg => (
-          <div
-            key={seg.id}
-            onClick={() => {
-              setActiveId(seg.id);
-              activeIdRef.current = seg.id;
-              const sm = parseRouteSegmentMode(
-                seg.routeSegmentMode ??
-                  (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
-              );
-              setDrawMode(sm);
-              drawModeRef.current = sm;
-            }}
-            className={`rounded-xl border p-3 cursor-pointer transition ${
-              seg.id === activeId
-                ? "border-[#f97316]/40 bg-[#f97316]/5"
-                : "border-white/8 bg-white/2 hover:bg-white/4"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 min-w-0">
-                {seg.id === activeId ? (
-                  <div className="relative shrink-0">
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        setColorPopoverSegId(colorPopoverSegId === seg.id ? null : seg.id);
-                      }}
-                      className="w-5 h-5 rounded-full ring-2 ring-white/40 flex items-center justify-center"
-                      style={{ backgroundColor: seg.color }}
-                      title="Cambiar color"
-                    >
-                      <Palette size={9} className="text-white/90" />
-                    </button>
-                    {colorPopoverSegId === seg.id && (
-                      <div className="absolute top-full mt-2 left-0 bg-[#1a1a1a] border border-white/15 rounded-xl p-2 shadow-2xl z-30 min-w-[140px]">
-                        {advanced ? (
-                          <TrackColorPicker
-                            value={seg.color}
-                            onChange={(c) => handleColor(seg.id, c)}
-                          />
-                        ) : (
-                        <div className="flex flex-wrap gap-1.5" style={{ width: "116px" }}>
-                          {COLORS.map(c => (
-                            <button
-                              key={c.value}
-                              title={`${c.label} — ${c.desc}`}
-                              onClick={ev => {
-                                ev.stopPropagation();
-                                handleColor(seg.id, c.value);
-                                setColorPopoverSegId(null);
-                              }}
-                              className={`w-6 h-6 rounded-full border-2 transition ${
-                                seg.color === c.value
-                                  ? "border-white scale-110"
-                                  : "border-transparent hover:border-white/50"
-                              }`}
-                              style={{ backgroundColor: c.value }}
-                            />
-                          ))}
-                        </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div
-                    className="w-3 h-3 rounded-full shrink-0 ring-1 ring-white/20"
-                    style={{ backgroundColor: seg.color }}
-                  />
-                )}
-                {advanced && seg.id === activeId ? (
-                  <input
-                    value={seg.name}
-                    onClick={e => e.stopPropagation()}
-                    onChange={e => {
-                      const name = e.target.value;
-                      const upd = segsRef.current.map(s =>
-                        s.id === seg.id ? { ...s, name } : s,
-                      );
-                      segsRef.current = upd;
-                      setSegments(upd);
-                    }}
-                    onBlur={e => handleRenameSeg(seg.id, e.target.value)}
-                    className="text-xs text-white font-medium bg-transparent border-b border-white/20 focus:outline-none focus:border-[#f97316]/50 min-w-0 flex-1"
-                  />
-                ) : (
-                  <span className="text-xs text-white font-medium truncate">{seg.name}</span>
-                )}
-                <span className="text-xs text-white/30 shrink-0">
-                  {segKm(
-                    seg.routePoints.length >= 2 && !seg.routingFailed
-                      ? seg.routePoints
-                      : seg.waypoints,
-                  ).toFixed(2)} km
-                </span>
-              </div>
-              {advanced && (
-                <button
-                  onClick={e => { e.stopPropagation(); handleDeleteSeg(seg.id); }}
-                  className="text-white/20 hover:text-red-400 transition shrink-0 ml-1">
-                  <X size={13} />
-                </button>
-              )}
+            <button className={barBtn} onClick={() => { engineRef.current.reverse(); redraw(); }}>Invertir</button>
+            <button className={barBtn} onClick={() => { engineRef.current.roundTrip(); redraw(); }}>Ida y vuelta</button>
+            <button className={barBtn} onClick={async () => {
+              const last = engineRef.current.lastPoint();
+              const first = engineRef.current.firstPoint();
+              if (!last || !first) return;
+              const gen = engineRef.current.bump();
+              const path = await routePair([last.lon, last.lat], [first.lon, first.lat], gen);
+              if (!path || engineRef.current.isStale(gen)) return;
+              engineRef.current.backToStart(path);
+              redraw();
+            }}>Volver al inicio</button>
+            <button className={barBtn} onClick={async () => {
+              const last = engineRef.current.lastPoint();
+              const first = engineRef.current.firstPoint();
+              if (!last || !first) return;
+              const gen = engineRef.current.bump();
+              const path = await routePair([last.lon, last.lat], [first.lon, first.lat], gen);
+              if (!path || engineRef.current.isStale(gen)) return;
+              engineRef.current.closeLoop(path);
+              redraw();
+            }}>Cerrar circuito</button>
+            <button className={barBtn} onClick={() => {
+              const line = lngLatsOf(engineRef.current.doc);
+              const near = nearestOnPolyline(line[0] ?? [0, 0], line);
+              if (near) engineRef.current.startLoopHere(near.index);
+              redraw();
+            }}>Empezar aquí</button>
+            <button className={barBtn} onClick={() => setTool(tool === "crop" ? "none" : "crop")}>Recortar</button>
+            <button className={barBtn} onClick={() => setTool(tool === "split" ? "none" : "split")}>Dividir aquí</button>
+            <button className={barBtn} onClick={() => { engineRef.current.merge("connect"); redraw(); }}>Conectar</button>
+            <button className={barBtn} onClick={() => { engineRef.current.merge("group"); redraw(); }}>Agrupar</button>
+            <button className={barBtn} onClick={() => setTool(tool === "waypoint" ? "none" : "waypoint")}>Waypoint</button>
+            <button className={barBtn} onClick={() => setTool(tool === "select" ? "none" : "select")}>Selección</button>
+            <button className={barBtn} onClick={() => void runDoctor()}>Route Doctor</button>
+            <button className={barBtn} onClick={() => setPanel("poi")}>Puntos de interés</button>
+          </div>
+          <div className="mt-3">
+            <p className="text-[11px] text-white/50">Reducir puntos · {simEst.before.toLocaleString("es")} → {simEst.after.toLocaleString("es")}</p>
+            <input type="range" min={2} max={80} value={simplify} onChange={(e) => setSimplify(Number(e.target.value))} className="w-full" />
+            <div className="flex justify-between text-[10px] text-white/35"><span>Más detalle</span><span>Menos detalle</span></div>
+            <button className={`${barBtn} mt-1 w-full`} onClick={() => { engineRef.current.simplify(simplify); redraw(); }}>Aplicar simplificar</button>
+          </div>
+          {tool === "crop" && (
+            <div className="mt-3 text-xs">
+              <p>Inicio / final (m)</p>
+              <input type="range" min={0} max={stats.distanceM} value={crop?.[0] ?? 0} onChange={(e) => setCrop([Number(e.target.value), crop?.[1] ?? stats.distanceM])} className="w-full" />
+              <input type="range" min={0} max={stats.distanceM} value={crop?.[1] ?? stats.distanceM} onChange={(e) => setCrop([crop?.[0] ?? 0, Number(e.target.value)])} className="w-full" />
+              <p className="text-white/50">{((crop ? crop[1] - crop[0] : stats.distanceM) / 1000).toFixed(2)} km</p>
+              <button className={`${barBtn} w-full mt-1`} onClick={() => {
+                if (!crop) return;
+                const line = lngLatsOf(engineRef.current.doc);
+                const a = nearestOnPolyline(pointAtDistanceM(line, crop[0]) ?? line[0], line);
+                const b = nearestOnPolyline(pointAtDistanceM(line, crop[1]) ?? line[line.length - 1], line);
+                if (a && b) engineRef.current.crop(a.index, b.index);
+                setTool("none");
+                setCrop(null);
+                redraw();
+              }}>Confirmar recorte</button>
             </div>
-            {seg.routingFailed && (
-              <p className="text-[10px] text-red-400 mt-1">Tramo sin ruta — no se dibuja recta falsa</p>
-            )}
-            <p className="text-[10px] text-white/45 mt-1">
-              {labelForSegmentMode(
-                parseRouteSegmentMode(
-                  seg.routeSegmentMode ??
-                    (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
-                ),
-              )}
-            </p>
-            {advanced && seg.absurdDetour && (
-              <p className="text-[10px] text-[#FF9500] mt-1">Desvío absurdo — revisa waypoints</p>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Advanced: waypoint list + track controls */}
-      {advanced && activeSeg && (
-        <div className="flex flex-col gap-2 border-t border-white/8 pt-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-white/40 uppercase tracking-widest">Waypoints</span>
-            <button
-              type="button"
-              onClick={() => setInsertMode(v => !v)}
-              disabled={!activeWpt || activeWpt.segId !== activeSeg.id}
-              className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md border transition ${
-                insertMode
-                  ? "border-[#FF5A1F]/50 text-[#FF5A1F] bg-[#FF5A1F]/10"
-                  : "border-white/10 text-white/50 disabled:opacity-30"
-              }`}
-              title="Insertar punto tras el waypoint seleccionado"
-            >
-              <Crosshair size={11} /> Insertar
-            </button>
-          </div>
-          {insertMode && (
-            <p className="text-[10px] text-[#FF5A1F]/80">
-              Clic en el mapa para insertar después del waypoint seleccionado.
-            </p>
           )}
-          <ul className="max-h-40 overflow-y-auto flex flex-col gap-1">
-            {activeSeg.waypoints.map((p, i) => {
-              const selected = activeWpt?.segId === activeSeg.id && activeWpt.idx === i;
-              const kind = ensureWaypointKinds(activeSeg)[i] ?? "via";
-              return (
-                <li
-                  key={`${activeSeg.id}-${i}`}
-                  className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] ${
-                    selected ? "bg-[#FF5A1F]/15 border border-[#FF5A1F]/40" : "bg-white/3 border border-transparent"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    className="flex-1 text-left text-white/70 truncate"
-                    onClick={() => {
-                      const sel = { segId: activeSeg.id, idx: i };
-                      setActiveWpt(sel);
-                      activeWptRef.current = sel;
-                      syncMap(segsRef.current, sel);
-                      mapRef.current?.flyTo({ center: p, zoom: Math.max(mapRef.current.getZoom(), 14), duration: 600 });
-                    }}
-                  >
-                    #{i + 1} {p[1].toFixed(5)}, {p[0].toFixed(5)}
-                  </button>
-                  <button
-                    type="button"
-                    title="Alternar VIA ↔ SHAPING"
-                    onClick={() => handleToggleViaShaping(activeSeg.id, i)}
-                    className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide border ${
-                      kind === "shaping"
-                        ? "border-sky-400/40 text-sky-300 bg-sky-500/10"
-                        : "border-white/15 text-white/50 hover:text-white"
-                    }`}
-                  >
-                    {kind === "shaping" ? "SHP" : "VIA"}
-                  </button>
-                  <button type="button" title="Subir" disabled={i === 0}
-                    onClick={() => void handleReorderWaypoint(activeSeg.id, i, -1)}
-                    className="text-white/30 hover:text-white disabled:opacity-20">
-                    <ChevronUp size={12} />
-                  </button>
-                  <button type="button" title="Bajar" disabled={i >= activeSeg.waypoints.length - 1}
-                    onClick={() => void handleReorderWaypoint(activeSeg.id, i, 1)}
-                    className="text-white/30 hover:text-white disabled:opacity-20">
-                    <ChevronDown size={12} />
-                  </button>
-                  <button type="button" title="Eliminar"
-                    onClick={() => void handleDeleteWaypoint(activeSeg.id, i)}
-                    className="text-white/30 hover:text-red-400">
-                    <Trash2 size={12} />
-                  </button>
-                </li>
-              );
-            })}
-            {activeSeg.waypoints.length === 0 && (
-              <li className="text-[11px] text-white/30">Sin waypoints — clic en el mapa.</li>
-            )}
-          </ul>
-
-          {/* Cues panel (advanced) */}
-          <div className="flex flex-col gap-2 border-t border-white/8 pt-3">
-            <span className="text-xs text-white/40 uppercase tracking-widest">Cues</span>
-            <ul className="max-h-28 overflow-y-auto flex flex-col gap-1">
-              {cues.map((c) => (
-                <li
-                  key={c.cueId}
-                  className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-[11px] cursor-pointer ${
-                    selectedCueId === c.cueId
-                      ? "bg-white/10 ring-1 ring-white/20"
-                      : "bg-white/3"
-                  }`}
-                  onClick={() => setSelectedCueId(c.cueId)}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white/70 truncate">
-                      <span className="text-white/40">{cueSeverityLabel(c.severity)}</span>
-                      {" · "}
-                      {c.message}
-                    </p>
-                    <p className="text-white/25 text-[10px]">
-                      {c.progressM != null
-                        ? `@${Math.round(c.progressM)} m`
-                        : c.noteStatus === "off_track"
-                          ? "fuera del track"
-                          : "—"}
-                      {typeof c.lat === "number" && typeof c.lon === "number"
-                        ? ` · ${c.lat.toFixed(5)},${c.lon.toFixed(5)}`
-                        : ""}
-                    </p>
-                    {selectedCueId === c.cueId && (
-                      <select
-                        value={c.severity}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) =>
-                          handleUpdateCueSeverity(
-                            c.cueId,
-                            e.target.value as NavRideCueSeverity,
-                          )
-                        }
-                        className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-1.5 py-1 text-[10px] text-white"
-                        aria-label="Tipo de nota"
-                      >
-                        {(Object.keys(CUE_SEVERITY_LABELS_ES) as NavRideCueSeverity[]).map((s) => (
-                          <option key={s} value={s}>{CUE_SEVERITY_LABELS_ES[s]}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    title="Eliminar cue"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteCue(c.cueId);
-                    }}
-                    className="text-white/30 hover:text-red-400 shrink-0"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </li>
-              ))}
-              {cues.length === 0 && (
-                <li className="text-[11px] text-white/30">Sin cues — añade uno abajo.</li>
-              )}
-            </ul>
-            <div className="flex flex-col gap-1.5">
-              <select
-                value={cueDraftSeverity}
-                onChange={(e) => setCueDraftSeverity(e.target.value as NavRideCueSeverity)}
-                className="rounded-lg bg-white/5 border border-white/10 px-2 py-1.5 text-xs text-white"
-              >
-                {(Object.keys(CUE_SEVERITY_LABELS_ES) as NavRideCueSeverity[]).map((s) => (
-                  <option key={s} value={s}>{CUE_SEVERITY_LABELS_ES[s]}</option>
-                ))}
-              </select>
-              <input
-                value={cueDraftMessage}
-                onChange={(e) => setCueDraftMessage(e.target.value)}
-                placeholder="Mensaje del cue…"
-                className="rounded-lg bg-white/5 border border-white/10 px-2 py-1.5 text-xs text-white placeholder:text-white/25"
+          {audit && (
+            <div className="mt-3">
+              <RouteCompatibilityReview
+                audit={audit}
+                loading={false}
+                selected={selectedIssue}
+                onReview={() => void runDoctor()}
+                onSelectIssue={(issue) => flyIssue(issue)}
+                onKeep={() => setSelectedIssue(null)}
+                onFindAlt={() => void findAlt()}
+                onEdit={() => setTool("none")}
+                onBack={() => setSelectedIssue(null)}
               />
-              <button
-                type="button"
-                onClick={handleAddCue}
-                disabled={!cueDraftMessage.trim()}
-                className={`rounded-lg border text-xs py-1.5 disabled:opacity-30 ${
-                  placeNotePending
-                    ? "border-yellow-400/60 text-yellow-300"
-                    : "border-[#FF5A1F]/40 text-[#FF5A1F]"
-                }`}
-              >
-                {placeNotePending
-                  ? "Pulsa el mapa para colocar…"
-                  : "Añadir nota (luego pulsa el mapa)"}
-              </button>
             </div>
-          </div>
+          )}
+        </div>
+      )}
 
-          <div className="flex flex-col gap-1.5 pt-1">
-            <label className="text-xs text-white/40 uppercase tracking-widest">
-              Grosor pista ({trackWidth.toFixed(1)})
+      {panel === "layers" && (
+        <div className={sheet}>
+          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Mapa</p>
+          {MAP_STYLES.map((s) => (
+            <button key={s.id} type="button" className={`${barBtn} w-full mb-1 ${mapStyleId === s.id ? "bg-orange-600" : ""}`} onClick={() => setMapStyleId(s.id)}>
+              {s.label}
+            </button>
+          ))}
+          <button className={`${barBtn} w-full mt-2`} onClick={() => setPitch3d((v) => !v)}>{pitch3d ? "3D" : "2D"}</button>
+          <button className={`${barBtn} w-full mt-1`} onClick={() => setShowArrows((v) => !v)}>Flechas de dirección {showArrows ? "ON" : "OFF"}</button>
+          <button className={`${barBtn} w-full mt-1`} onClick={() => setShowMarks((v) => !v)}>Marcadores de distancia {showMarks ? "ON" : "OFF"}</button>
+          {multi && (
+            <button className={`${barBtn} w-full mt-2`} onClick={() => setPanel("tracks")}>Trazas ({doc.tracks.length})</button>
+          )}
+        </div>
+      )}
+
+      {panel === "poi" && (
+        <div className={sheet}>
+          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Puntos de interés</p>
+          <button className={`${barBtn} w-full mb-2`} onClick={() => {
+            const next = !poiOn;
+            setPoiOn(next);
+            if (next && poiCats.length === 0) setPoiCats(POI_MODE_DEFAULTS[mode] ?? []);
+          }}>{poiOn ? "POI ON" : "POI apagados"}</button>
+          {POI_CATEGORIES.map((c) => (
+            <label key={c.id} className="flex items-center gap-2 text-xs py-1">
+              <input
+                type="checkbox"
+                checked={poiCats.includes(c.id)}
+                onChange={() => {
+                  setPoiCats((cur) => cur.includes(c.id) ? cur.filter((x) => x !== c.id) : [...cur, c.id]);
+                  setPoiOn(true);
+                }}
+              />
+              {c.label}
             </label>
-            <input
-              type="range"
-              min={2}
-              max={14}
-              step={0.5}
-              value={trackWidth}
-              onChange={e => setTrackWidth(clampTrackWidth(Number(e.target.value)))}
-              className="w-full accent-[#FF5A1F]"
-            />
-            <label className="text-xs text-white/40 uppercase tracking-widest">
-              Opacidad ({Math.round(trackOpacity * 100)}%)
-            </label>
-            <input
-              type="range"
-              min={35}
-              max={100}
-              step={1}
-              value={Math.round(trackOpacity * 100)}
-              onChange={e => setTrackOpacity(clampTrackOpacity(Number(e.target.value) / 100))}
-              className="w-full accent-[#FF5A1F]"
-            />
+          ))}
+        </div>
+      )}
+
+      {panel === "tracks" && multi && (
+        <div className={sheet}>
+          {doc.tracks.map((t, i) => (
+            <div key={t.id} className="flex items-center gap-2 text-xs py-1">
+              <input type="checkbox" checked={!t.hidden} onChange={() => { engineRef.current.hideTrack(i, !t.hidden); redraw(); }} />
+              <input className="bg-transparent flex-1 border-b border-white/10" value={t.name} onChange={(e) => { engineRef.current.rename(i, e.target.value); redraw(); }} />
+              <button onClick={() => { engineRef.current.duplicate(i); redraw(); }}>Dup</button>
+              <button onClick={() => { engineRef.current.dropTrack(i); redraw(); }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {prompt && (
+        <div className="absolute bottom-28 left-3 z-20 w-72">
+          <CompatibilityPromptCard
+            prompt={prompt}
+            mode={mode}
+            findingAlt={findingAlt}
+            onViewMap={() => mapRef.current?.flyTo({ center: prompt.hit.snapped, zoom: 16 })}
+            onFindAlt={() => void findAlt()}
+            onCancel={() => { setPrompt(null); pendingClick.current = null; }}
+          />
+        </div>
+      )}
+      {altPreview && (
+        <div className="absolute bottom-28 left-80 z-20 w-64">
+          <CompatibilityAltPreview
+            onAccept={acceptAlt}
+            onDismiss={() => setAltPreview(null)}
+          />
+        </div>
+      )}
+
+      {poiPick && (
+        <div className="absolute bottom-28 right-3 z-20 w-64 rounded-xl bg-[#121214] border border-white/10 p-3 text-xs">
+          <p className="font-semibold">{poiPick.name ?? poiPick.category}</p>
+          <p className="text-white/50">{poiPick.category}</p>
+          <div className="mt-2 grid gap-1">
+            <button className={barBtn} onClick={() => { engineRef.current.addClick(poiPick.lat, poiPick.lon); setPoiPick(null); redraw(); }}>Añadir a ruta</button>
+            <button className={barBtn} onClick={() => { engineRef.current.addWpt(poiPick.lat, poiPick.lon, poiPick.name ?? poiPick.category); setPoiPick(null); redraw(); }}>Añadir como waypoint</button>
+            <button className={barBtn} onClick={() => setPoiPick(null)}>Cerrar</button>
           </div>
         </div>
       )}
 
-      {/* Note */}
-      <p className="text-xs text-white/25 flex items-start gap-1.5">
-        <MapPin size={11} className="shrink-0 mt-0.5" />
-        Red OSM (todas las highway) · el perfil decide compatibilidad · Satélite ESRI + labels OpenFreeMap · {SATELLITE_ATTRIBUTION.split("|")[0]}
-      </p>
-
-      <RouteCompatibilityReview
-        audit={compatAudit}
-        loading={compatLoading}
-        onReview={() => void runCompatReview()}
-        onSelectIssue={(iss) => {
-          setCompatIssue(iss);
-          flyToIssue(iss);
-        }}
-        onKeep={() => {
-          if (!compatIssue) return;
-          setKeptCompatIds((prev) => new Set([...prev, compatIssue.id]));
-          setCompatIssue(null);
-        }}
-        onFindAlt={() => {
-          if (!compatIssue) return;
-          void findCompatAlternative(compatIssue.midpoint, compatIssue.start, compatIssue.end);
-        }}
-        onEdit={() => setCompatIssue(null)}
-        onBack={() => setCompatIssue(null)}
-        selected={compatIssue}
-      />
-
-      {/* Import GPX (advanced capability) */}
-      {advanced && (
-        <>
-          <input
-            ref={gpxFileInputRef}
-            type="file"
-            accept=".gpx,application/gpx+xml,text/xml"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = "";
-              if (f) handleGpxFile(f);
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => gpxFileInputRef.current?.click()}
-            className="flex items-center justify-center gap-2 rounded-full border border-white/15 py-2.5 text-sm text-white/70 hover:text-white hover:border-white/30 transition"
-          >
-            <Upload size={14} />
-            Importar GPX
-          </button>
-        </>
+      {wptEdit && (
+        <div className="absolute bottom-28 right-3 z-20 w-64 rounded-xl bg-[#121214] border border-white/10 p-3 text-xs">
+          <input className="w-full bg-black/40 rounded px-2 py-1 mb-1" value={wptEdit.name} onChange={(e) => setWptEdit({ ...wptEdit, name: e.target.value })} />
+          <textarea className="w-full bg-black/40 rounded px-2 py-1 h-16" value={wptEdit.desc} onChange={(e) => setWptEdit({ ...wptEdit, desc: e.target.value })} />
+          <div className="flex gap-1 mt-1">
+            <button className={barBtn} onClick={() => { engineRef.current.patchWpt(wptEdit.id, { name: wptEdit.name, desc: wptEdit.desc }); setWptEdit(null); redraw(); }}>OK</button>
+            <button className={barBtn} onClick={() => { engineRef.current.deleteWpt(wptEdit.id); setWptEdit(null); redraw(); }}>Borrar</button>
+          </div>
+        </div>
       )}
 
-      {/* Descargar local */}
-      <button onClick={handleDownload} disabled={totalRoutePts < 2}
-        className="flex items-center justify-center gap-2 rounded-full border border-white/15 py-2.5 text-sm text-white/70 hover:text-white hover:border-white/30 disabled:opacity-30 disabled:cursor-not-allowed transition">
-        <Download size={14} />
-        {embedNavRideApp ? `Exportar GPX (${totalRoutePts} pts)` : `Descargar GPX (${totalRoutePts} pts)`}
-      </button>
+      <div className={`absolute ${embedNavRideApp ? "bottom-[4.5rem]" : "bottom-2"} left-3 right-3 z-10`}>
+        <button type="button" className="mb-1 text-[10px] text-white/50" onClick={() => setProfileOpen((v) => !v)}>
+          {profileOpen ? <ChevronDown size={12} /> : <ChevronUp size={12} />} Perfil
+        </button>
+        {profileOpen && (
+          <div className="rounded-xl bg-black/60 border border-white/10 px-3 py-2">
+            <div className="flex flex-wrap gap-3 text-[11px] text-white/80">
+              <span>{(stats.distanceM / 1000).toFixed(2)} km</span>
+              <span>↑ {Math.round(stats.ascentM)} m</span>
+              <span>↓ {Math.round(stats.descentM)} m</span>
+              {stats.eleMin != null && <span>min {Math.round(stats.eleMin)} m</span>}
+              {stats.eleMax != null && <span>max {Math.round(stats.eleMax)} m</span>}
+              {crop && <span>sel {((crop[1] - crop[0]) / 1000).toFixed(2)} km</span>}
+            </div>
+            <svg
+              viewBox="0 0 400 56"
+              className="w-full h-14 mt-1"
+              onMouseMove={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                const t = (e.clientX - r.left) / r.width;
+                setHlDistM(t * stats.distanceM);
+              }}
+              onMouseLeave={() => setHlDistM(null)}
+            >
+              {profile.filter((p) => p.ele != null).length >= 2 && (() => {
+                const eles = profile.map((p) => p.ele ?? 0);
+                const min = Math.min(...eles);
+                const max = Math.max(...eles);
+                const span = Math.max(1, max - min);
+                const d = profile.map((p, i) => {
+                  const x = (p.distM / Math.max(1, stats.distanceM)) * 400;
+                  const y = 50 - ((p.ele ?? min) - min) / span * 44;
+                  return `${i === 0 ? "M" : "L"}${x},${y}`;
+                }).join(" ");
+                return <path d={d} fill="none" stroke="#f97316" strokeWidth="2" />;
+              })()}
+            </svg>
+          </div>
+        )}
+      </div>
 
-      {/* Guardar en la nube */}
-      <button onClick={() => void handleSave()} disabled={totalRoutePts < 2 || saving || uploading}
-        className="flex items-center justify-center gap-2 rounded-full border border-[#3b82f6]/50 bg-[#3b82f6]/10 py-2.5 text-sm font-semibold text-[#60a5fa] hover:bg-[#3b82f6]/20 disabled:opacity-40 disabled:cursor-not-allowed transition">
-        {saving
-          ? <Loader2 size={14} className="animate-spin" />
-          : <Cloud size={14} />}
-        {saving
-          ? (embedNavRideApp ? "Guardando…" : "Guardando en la web…")
-          : embedNavRideApp
-            ? (savedRouteId ? "Guardar en NavRide" : "Guardar en NavRide")
-            : savedRouteId
-              ? "Actualizar en la web"
-              : "Guardar en la web"}
-      </button>
+      <div className="absolute bottom-2 right-3 z-10 flex gap-1">
+        <button type="button" className={barBtn} onClick={() => {
+          const gpx = exportGpx(engineRef.current.doc, capsuleRef.current);
+          const blob = new Blob([gpx], { type: "application/gpx+xml" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `${title.replace(/\s+/g, "_")}.gpx`;
+          a.click();
+          if (embedNavRideApp) postToNavRideApp("EXPORT_GPX", { gpxXml: gpx, name: title });
+        }}><Download size={14} /></button>
+      </div>
 
-      {/* Enviar a la app */}
-      <button onClick={() => void handleLaunch()} disabled={totalRoutePts < 2 || saving || uploading}
-        className="flex items-center justify-center gap-2 rounded-full bg-[#f97316] py-2.5 text-sm font-semibold text-white hover:bg-[#f97316]/90 disabled:opacity-40 disabled:cursor-not-allowed transition">
-        {uploading
-          ? <Loader2 size={14} className="animate-spin" />
-          : <Smartphone size={14} />}
-        {uploading
-          ? (embedNavRideApp ? "Usando en NavRide…" : "Enviando a la app…")
-          : (embedNavRideApp ? "Guardar y usar en NavRide" : "Enviar a NavRide App")}
-      </button>
-
-      {savedRouteId && (
-        <p className="text-[10px] text-white/35 flex items-center gap-1">
-          <Link2 size={10} />
-          ID guardado — sync automático con GPX Web en la app
-        </p>
+      {status && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-20 rounded-lg bg-black/75 px-3 py-1.5 text-xs text-white/80 flex items-center gap-2">
+          {status}
+          <button type="button" onClick={() => setStatus(null)}><X size={12} /></button>
+        </div>
       )}
-
       {uploadMsg && (
-        <div className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2.5 ${
-          uploadMsg.ok
-            ? "bg-green-500/10 border border-green-500/20 text-green-400"
-            : "bg-red-500/10 border border-red-500/20 text-red-400"
-        }`}>
-          {uploadMsg.ok
-            ? <CheckCircle2 size={13} className="shrink-0 mt-0.5" />
-            : <AlertCircle  size={13} className="shrink-0 mt-0.5" />}
+        <div className={`absolute top-24 left-1/2 -translate-x-1/2 z-20 rounded-lg px-3 py-1.5 text-xs ${uploadMsg.ok ? "bg-emerald-900/80" : "bg-red-900/80"}`}>
           {uploadMsg.text}
         </div>
       )}
 
-      {advanced && (
-        <RouteDoctorPanel
-          report={routeHealth}
-          modeLabel={modeLabel}
-          pointCount={totalRoutePts > 0 ? totalRoutePts : totalWpts}
-        />
-      )}
-
-    </div>
-  );
-
-  const mapInsetClass = sidebarCollapsed
-    ? "absolute inset-0"
-    : "absolute inset-0 md:right-80";
-
-  // ── Render ────────────────────────────────────────────────────────────────
-  return (
-    <div className="relative flex-1 h-full overflow-hidden">
-
-      {/* ── Map container: full browser when sidebar collapsed ── */}
-      <div className={mapInsetClass}>
-        <div ref={mapContainer} className="w-full h-full" />
-
-        {(compatPrompt || compatAltLine || compatDataGap) && (
-          <div className="absolute top-14 right-3 z-20 w-64 max-w-[calc(100%-4.5rem)]">
-            {compatDataGap && (
-              <CompatibilityDataGapCard
-                onPlaceUnchecked={() => {
-                  const pt = compatDataGap;
-                  setCompatDataGap(null);
-                  void commitEditorPoint(pt);
-                }}
-                onCancel={() => setCompatDataGap(null)}
-              />
-            )}
-            {compatPrompt && (
-              <CompatibilityPromptCard
-                prompt={compatPrompt}
-                mode={transportMode}
-                findingAlt={compatFindingAlt}
-                onViewMap={() => {
-                  mapRef.current?.flyTo({
-                    center: compatPrompt.hit.snapped,
-                    zoom: 17,
-                    duration: 500,
-                  });
-                }}
-                onFindAlt={() => {
-                  const aId = activeIdRef.current;
-                  const seg = segsRef.current.find((s) => s.id === aId);
-                  const last = seg?.waypoints[seg.waypoints.length - 1];
-                  const target = compatPrompt.nearbyCompatible?.snapped ?? compatPrompt.hit.snapped;
-                  void findCompatAlternative(target, last, target);
-                }}
-                onCancel={() => {
-                  setCompatPrompt(null);
-                  setCompatAltLine(null);
-                  setCompatAltVia(null);
-                }}
-              />
-            )}
-            {compatAltLine && (
-              <div className="mt-2">
-                <CompatibilityAltPreview
-                  onAccept={() => void acceptCompatAlt()}
-                  onDismiss={() => {
-                    setCompatAltLine(null);
-                    setCompatAltVia(null);
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Desktop: colapsar sidebar → mapa 100vw */}
-        <button
-          type="button"
-          onClick={() => setSidebarCollapsed(v => !v)}
-          title={sidebarCollapsed ? "Mostrar panel" : "Mapa a pantalla completa"}
-          className={`hidden md:flex absolute top-3 z-20 w-9 h-9 rounded-lg bg-[#0a0a0a]/90 border border-white/15 items-center justify-center text-white/70 hover:text-white transition shadow-lg ${
-            sidebarCollapsed ? "right-3" : "right-[21rem]"
-          }`}
-        >
-          {sidebarCollapsed ? <PanelRightOpen size={15} /> : <PanelRightClose size={15} />}
-        </button>
-
-        {/* ── Floating edit toolbar (left) ── */}
-        <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">
-          <button onClick={handleClear} title="Borrar segmento activo"
-            disabled={!activeSeg || activeSeg.waypoints.length === 0}
-            className="w-9 h-9 rounded-lg bg-[#0a0a0a]/90 border border-white/15 flex items-center justify-center text-white/70 hover:text-red-400 disabled:opacity-30 transition shadow-lg"
-            aria-label="Borrar segmento activo">
-            <Trash2 size={15} />
-          </button>
-          <button
-            onClick={handleUndo}
-            title={embedNavRideApp ? "Deshacer último punto" : "Deshacer (Ctrl+Z)"}
-            disabled={histIdx === 0}
-            className={`rounded-lg bg-[#0a0a0a]/90 border border-white/15 flex items-center justify-center text-white/70 hover:text-white disabled:opacity-30 transition shadow-lg ${
-              embedNavRideApp ? "h-9 px-2.5 gap-1.5 min-w-9" : "w-9 h-9"
-            }`}
-            aria-label="Deshacer último punto"
-          >
-            <Undo2 size={15} />
-            {embedNavRideApp && (
-              <span className="text-[10px] font-medium whitespace-nowrap pr-0.5">
-                Deshacer último punto
-              </span>
-            )}
-          </button>
-          <button
-            onClick={handleRedo}
-            title={embedNavRideApp ? "Rehacer" : "Rehacer (Ctrl+Y)"}
-            disabled={histIdx >= histLen - 1}
-            className="w-9 h-9 rounded-lg bg-[#0a0a0a]/90 border border-white/15 flex items-center justify-center text-white/70 hover:text-white disabled:opacity-30 transition shadow-lg"
-            aria-label="Rehacer"
-          >
-            <Redo2 size={15} />
-          </button>
-          {advanced && (
-            <button onClick={handleCloseLoop} title="Cerrar loop"
-              disabled={!activeSeg || activeSeg.waypoints.length < 3}
-              className="w-9 h-9 rounded-lg bg-[#0a0a0a]/90 border border-white/15 flex items-center justify-center text-white/70 hover:text-[#f97316] disabled:opacity-30 transition shadow-lg">
-              <RotateCw size={15} />
-            </button>
-          )}
-        </div>
-
-        {/* ── Map style switcher button (bottom-left) ── */}
-        <div className="absolute bottom-6 left-3 z-10">
-          <div className="relative">
-            <button
-              onClick={() => setStyleMenuOpen(v => !v)}
-              title="Estilo de mapa"
-              className={`w-9 h-9 rounded-lg bg-[#0a0a0a]/90 border flex items-center justify-center transition shadow-lg ${
-                styleMenuOpen
-                  ? "border-[#f97316]/40 text-[#f97316]"
-                  : "border-white/15 text-white/70 hover:text-white"
-              }`}
-            >
-              <Layers size={16} />
-            </button>
-            {styleMenuOpen && (
-              <div className="absolute bottom-full mb-2 left-0 bg-[#0a0a0a]/98 border border-white/15 rounded-xl p-1.5 shadow-xl min-w-[100px] backdrop-blur-xl">
-                {MAP_STYLES.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => { setMapStyleId(s.id); setStyleMenuOpen(false); }}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs transition ${
-                      mapStyleId === s.id
-                        ? "bg-[#f97316]/20 text-[#f97316] font-semibold"
-                        : "text-white/60 hover:text-white hover:bg-white/5"
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-                <div className="mt-1 pt-1 border-t border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => setPoiMenuOpen(v => !v)}
-                    className="w-full text-left px-3 py-1.5 rounded-lg text-xs text-white/70 hover:text-white"
-                  >
-                    Puntos de interés
-                  </button>
-                  {poiMenuOpen && POI_CATEGORIES.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => {
-                        poiStoreRef.current.bump();
-                        setPoiCats((prev) => {
-                          const n = new Set(prev);
-                          if (n.has(c.id)) n.delete(c.id);
-                          else n.add(c.id);
-                          return n;
-                        });
-                      }}
-                      className={`w-full text-left px-3 py-1 rounded-lg text-[11px] ${
-                        poiCats.has(c.id) ? "text-[#f97316]" : "text-white/50"
-                      }`}
-                    >
-                      {poiCats.has(c.id) ? "● " : "○ "}{c.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Floating nav tools ── */}
-        <div
-          className={`absolute top-14 z-10 flex flex-col gap-1.5 ${
-            sidebarCollapsed ? "right-3" : "right-3 md:right-[21rem]"
-          }`}
-        >
-          <button onClick={handleLocate} title="Mi ubicación GPS"
-            className="w-9 h-9 rounded-lg bg-[#0a0a0a]/90 border border-white/15 flex items-center justify-center text-white/70 hover:text-[#3b82f6] transition shadow-lg">
-            {locating ? <Loader2 size={15} className="animate-spin text-[#3b82f6]" /> : <Navigation size={15} />}
-          </button>
-          <button onClick={handleFitRoute} title="Ajustar vista a la ruta"
-            disabled={totalWpts < 2}
-            className="w-9 h-9 rounded-lg bg-[#0a0a0a]/90 border border-white/15 flex items-center justify-center text-white/70 hover:text-white disabled:opacity-30 transition shadow-lg">
-            <Maximize2 size={15} />
-          </button>
-        </div>
-
-        {/* ── OSRM routing indicator ── */}
-        {routing && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#0a0a0a]/90 border border-white/15 rounded-full px-4 py-2 text-xs text-white/70 z-10 whitespace-nowrap shadow-lg">
-            <Loader2 size={13} className="animate-spin text-[#f97316]" />
-            Enrutando sobre OSM…
-          </div>
-        )}
-      </div>
-
-      {/* ── Desktop sidebar (md+) ── */}
-      {!sidebarCollapsed && (
-        <aside className="hidden md:flex absolute top-0 right-0 bottom-0 w-80 flex-col bg-[#0a0a0a] border-l border-white/8 overflow-hidden">
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            {sidebarContent}
-          </div>
-        </aside>
-      )}
-
-      {/* ── Mobile FAB (opens/closes drawer) ── */}
-      <button
-        onClick={() => setDrawerOpen(v => !v)}
-        aria-label={drawerOpen ? "Cerrar panel" : "Abrir panel"}
-        className="absolute bottom-6 right-6 z-30 md:hidden w-14 h-14 rounded-full bg-[#f97316] shadow-2xl flex items-center justify-center text-white"
-      >
-        {drawerOpen ? <X size={22} /> : <SlidersHorizontal size={22} />}
-      </button>
-
-      {/* ── Mobile drawer backdrop ── */}
-      {drawerOpen && (
-        <div
-          className="absolute inset-0 z-10 md:hidden bg-black/40"
-          onClick={() => setDrawerOpen(false)}
-        />
-      )}
-
-      {/* ── Mobile drawer: max-h 72dvh; parent overflow-hidden; scroll flex-1 min-h-0 ── */}
-      <div
-        className={`absolute bottom-0 left-0 right-0 z-20 md:hidden flex flex-col overflow-hidden transition-transform duration-300 ease-out ${
-          drawerOpen ? "translate-y-0" : "translate-y-full"
-        }`}
-        style={{ maxHeight: "72dvh" }}
-      >
-        <div className="bg-[#0a0a0a] border-t border-white/10 rounded-t-2xl overflow-hidden flex flex-col flex-1 min-h-0 max-h-[72dvh]">
-          <div className="flex justify-center pt-3 pb-1 shrink-0">
-            <div className="w-10 h-1 rounded-full bg-white/20" />
-          </div>
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            {sidebarContent}
-          </div>
-        </div>
-      </div>
-
-      {/* Recoverable GPX import dialog */}
-      {importDialog && (
-        <div className="absolute inset-0 z-40 flex items-end md:items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#121212] p-4 shadow-2xl flex flex-col gap-3">
-            <h3 className="text-sm font-semibold text-white">Importar GPX — recoverable</h3>
-            <p className="text-[11px] text-white/45 truncate">{importDialog.fileName}</p>
-            <ul className="text-[11px] text-[#FF9500] space-y-1 max-h-24 overflow-y-auto">
-              {importDialog.issues.map((iss, i) => (
-                <li key={i}>• {iss}</li>
-              ))}
-            </ul>
-            <p className="text-[11px] text-white/50">
-              {importDialog.geometry.length} puntos detectados
-              {importDialog.extensions ? " · extensiones NavRide presentes" : ""}
-              {importDialog.capsule ? " · capsule" : ""}
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  applyImportedGeometry(
-                    importDialog.geometry,
-                    importDialog.extensions,
-                    true,
-                    importDialog.capsule,
-                  )
-                }
-                className="rounded-full bg-[#f97316] py-2.5 text-sm font-semibold text-white"
-              >
-                IMPORTAR COMO TRACK
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  applyImportedGeometry(
-                    importDialog.geometry,
-                    importDialog.extensions,
-                    false,
-                    importDialog.capsule,
-                  )
-                }
-                className="rounded-full border border-white/20 py-2.5 text-sm text-white/80 hover:text-white"
-              >
-                INTENTAR REPARAR
-              </button>
-              <button
-                type="button"
-                onClick={() => setImportDialog(null)}
-                className="rounded-full py-2 text-sm text-white/40 hover:text-white/70"
-              >
-                CANCELAR
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        className="absolute bottom-2 left-3 z-0 sr-only"
+        aria-label="Nombre de ruta"
+      />
     </div>
   );
 }
