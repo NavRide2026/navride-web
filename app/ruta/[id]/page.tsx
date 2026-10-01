@@ -30,7 +30,6 @@ export default function RutaDeepLinkPage({ params }: Props) {
       .then(({ data }) => {
         setTitle((data?.title as string) ?? null);
         setLoading(false);
-        tryOpenNavRideApp(routeId);
       });
   }, [routeId]);
 
@@ -50,7 +49,7 @@ export default function RutaDeepLinkPage({ params }: Props) {
           {title ?? "Ruta NavRide"}
         </h1>
         <p className="text-sm text-white/50">
-          Si tienes NavRide instalada, la ruta debería abrirse automáticamente.
+          Pulsa el botón para abrir esta ruta directamente en la app NavRide.
         </p>
         <button
           type="button"

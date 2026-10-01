@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { User, Route, Shield, Zap, AlertTriangle, TrendingUp } from "lucide-react";
+import { User, Route, Shield, Zap, TrendingUp } from "lucide-react";
 import PerfilSignOutButton from "@/components/profile/PerfilSignOutButton";
 import PerfilEditForm from "@/components/profile/PerfilEditForm";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -61,7 +61,6 @@ export default async function PerfilPage() {
     display_name: string | null;
     role: string;
     points: number;
-    total_alerts: number;
     username: string | null;
     avatar_url: string | null;
     show_username_on_reports: boolean;
@@ -75,7 +74,7 @@ export default async function PerfilPage() {
     if (user) {
       const { data: p } = await supabase
         .from("user_profiles")
-        .select("display_name, role, points, total_alerts, username, avatar_url, show_username_on_reports")
+        .select("display_name, role, points, username, avatar_url, show_username_on_reports")
         .eq("id", user.id)
         .maybeSingle();
       profile = p ?? null;
@@ -89,7 +88,6 @@ export default async function PerfilPage() {
   const name              = profile?.display_name ?? user.email?.split("@")[0] ?? "Rider";
   const role              = profile?.role ?? "user";
   const points            = profile?.points ?? 0;
-  const totalAlerts       = profile?.total_alerts ?? 0;
   const username          = profile?.username ?? null;
   const avatarUrl         = profile?.avatar_url ?? null;
   const showUsernameOn    = profile?.show_username_on_reports ?? false;
@@ -162,7 +160,7 @@ export default async function PerfilPage() {
           </div>
 
           {/* Stats row */}
-          <div className="grid grid-cols-2 gap-3 pt-1">
+          <div className="pt-1">
             <div className="rounded-xl bg-white/3 border border-white/8 p-3 flex items-center gap-3">
               <TrendingUp size={18} className="text-[#f97316] shrink-0" />
               <div>
@@ -170,18 +168,7 @@ export default async function PerfilPage() {
                 <p className="text-white/40 text-xs">Puntos totales</p>
               </div>
             </div>
-            <div className="rounded-xl bg-white/3 border border-white/8 p-3 flex items-center gap-3">
-              <AlertTriangle size={18} className="text-yellow-400 shrink-0" />
-              <div>
-                <p className="text-white font-bold text-base leading-tight">{totalAlerts}</p>
-                <p className="text-white/40 text-xs">Avisos creados</p>
-              </div>
-            </div>
           </div>
-
-          <p className="text-[11px] text-white/25 leading-relaxed">
-            Gana puntos creando avisos de ruta (+2 pts) y confirmando incidencias de otros (+1 pt).
-          </p>
         </section>
 
         {/* ── Editar perfil ── */}
@@ -203,16 +190,12 @@ export default async function PerfilPage() {
         <div className="flex flex-wrap gap-3">
           <Link
             href="/editor-gpx"
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-full bg-[#f97316] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#f97316]/90 transition"
           >
             <Route size={16} />
-            Editor GPX
-          </Link>
-          <Link
-            href="/mapa-en-vivo"
-            className="inline-flex items-center gap-2 rounded-full border border-white/15 px-5 py-2.5 text-sm text-white/70 hover:text-white hover:border-white/30 transition"
-          >
-            Mapa en vivo
+            Editor de rutas
           </Link>
           <Link
             href="/mi-garaje"

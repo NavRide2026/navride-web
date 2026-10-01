@@ -1,0 +1,114 @@
+.route-motion {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: rgba(95, 107, 118, 0.34);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 133, 0, 0.11), transparent 31%),
+    radial-gradient(circle at 82% 72%, rgba(139, 234, 0, 0.07), transparent 28%),
+    linear-gradient(180deg, #08090b 0%, #050608 100%);
+}
+
+.route-motion::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(5, 6, 8, 0.9) 0%, rgba(5, 6, 8, 0.48) 48%, rgba(5, 6, 8, 0.72) 100%);
+}
+
+.route-motion svg {
+  width: 100%;
+  height: 100%;
+  opacity: 0.92;
+  transform: scale(1.04);
+}
+
+.route-topography {
+  animation: topoDrift 16s ease-in-out infinite alternate;
+}
+
+.route-track-shadow,
+.route-track {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.route-track-shadow {
+  stroke: rgba(255, 133, 0, 0.16);
+  stroke-width: 18;
+  filter: blur(8px);
+}
+
+.route-track {
+  stroke: #ff8500;
+  stroke-width: 6;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  filter: drop-shadow(0 0 7px rgba(255, 133, 0, 0.48));
+  animation: routeDraw 2.2s cubic-bezier(.22, .78, .24, 1) forwards;
+}
+
+.route-waypoints {
+  fill: #8bea00;
+  stroke: #111318;
+  stroke-width: 5;
+  opacity: 0;
+  animation: waypointReveal .6s ease 1.65s forwards;
+  filter: drop-shadow(0 0 8px rgba(139, 234, 0, 0.55));
+}
+
+.brand-display {
+  transform: rotate(-2deg);
+  filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.44));
+}
+
+@keyframes routeDraw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes waypointReveal {
+  to { opacity: 1; }
+}
+
+@keyframes topoDrift {
+  from { transform: translate3d(-12px, -5px, 0); opacity: .58; }
+  to { transform: translate3d(14px, 8px, 0); opacity: .95; }
+}
+
+@supports (animation-timeline: view()) {
+  .route-track {
+    animation-timeline: view();
+    animation-range: entry 5% cover 58%;
+  }
+
+  .route-waypoints {
+    animation: waypointReveal linear both;
+    animation-timeline: view();
+    animation-range: entry 32% cover 68%;
+  }
+}
+
+@media (max-width: 1023px) {
+  .route-motion::after {
+    background: linear-gradient(180deg, rgba(5, 6, 8, 0.78) 0%, rgba(5, 6, 8, 0.52) 52%, rgba(5, 6, 8, 0.86) 100%);
+  }
+
+  .route-motion svg {
+    width: 165%;
+    transform: translateX(-27%) scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-topography,
+  .route-track,
+  .route-waypoints {
+    animation: none !important;
+  }
+
+  .route-track { stroke-dashoffset: 0; }
+  .route-waypoints { opacity: 1; }
+}

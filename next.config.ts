@@ -4,111 +4,35 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  {
-    key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(self)",
-  },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self)" },
+  { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
 
 const nextConfig: NextConfig = {
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+  devIndicators: false,
   async headers() {
-    return [
-      {
-        source: "/:path*",
-        headers: securityHeaders,
-      },
-    ];
+    return [{ source: "/:path*", headers: securityHeaders }];
   },
   async redirects() {
     return [
-      {
-        source: "/garage",
-        destination: "/producto",
-        permanent: true,
-      },
-      {
-        source: "/garage/:path*",
-        destination: "/producto",
-        permanent: true,
-      },
-      {
-        source: "/privacy",
-        destination: "/legal/politica-privacidad",
-        permanent: true,
-      },
-      {
-        source: "/legal/privacy_policy.html",
-        destination: "/legal/politica-privacidad",
-        permanent: true,
-      },
-      {
-        source: "/legal/aviso-legal",
-        destination: "/legal/legal-notice.html",
-        permanent: true,
-      },
-      {
-        source: "/legal/eliminacion-datos",
-        destination: "/legal/data-deletion.html",
-        permanent: true,
-      },
-      {
-        source: "/legal/responsabilidad-navegacion",
-        destination: "/legal/gps-disclaimer.html",
-        permanent: true,
-      },
-      {
-        source: "/legal/politica-pagos",
-        destination: "/legal/refund.html",
-        permanent: true,
-      },
-      {
-        source: "/legal/suscripcion-pro",
-        destination: "/legal/subscription.html",
-        permanent: true,
-      },
-      {
-        source: "/legal/terminos-condiciones",
-        destination: "/legal/terms.html",
-        permanent: true,
-      },
-      {
-        source: "/diseno",
-        destination: "/producto",
-        permanent: true,
-      },
-      {
-        source: "/news",
-        destination: "/novedades",
-        permanent: true,
-      },
-      {
-        source: "/noticias",
-        destination: "/novedades",
-        permanent: true,
-      },
-      {
-        source: "/downloads",
-        destination: "/",
-        permanent: true,
-      },
-      {
-        source: "/simulator",
-        destination: "/producto",
-        permanent: true,
-      },
-      {
-        source: "/status",
-        destination: "/",
-        permanent: true,
-      },
-      {
-        source: "/tutorials",
-        destination: "/producto",
-        permanent: true,
-      },
+      { source: "/garage", destination: "/producto", permanent: true },
+      { source: "/garage/:path*", destination: "/producto", permanent: true },
+      { source: "/privacy", destination: "/legal/politica-privacidad", permanent: true },
+      { source: "/legal/privacy_policy.html", destination: "/legal/politica-privacidad", permanent: true },
+      { source: "/legal/aviso-legal", destination: "/legal/legal-notice.html", permanent: true },
+      { source: "/legal/eliminacion-datos", destination: "/legal/data-deletion.html", permanent: true },
+      { source: "/legal/responsabilidad-navegacion", destination: "/legal/gps-disclaimer.html", permanent: true },
+      { source: "/legal/politica-pagos", destination: "/legal/refund.html", permanent: true },
+      { source: "/legal/suscripcion-pro", destination: "/legal/subscription.html", permanent: true },
+      { source: "/legal/terminos-condiciones", destination: "/legal/terms.html", permanent: true },
+      { source: "/diseno", destination: "/producto", permanent: true },
+      { source: "/news", destination: "/novedades", permanent: true },
+      { source: "/noticias", destination: "/novedades", permanent: true },
+      { source: "/downloads", destination: "/", permanent: true },
+      { source: "/simulator", destination: "/producto", permanent: true },
+      { source: "/status", destination: "/", permanent: true },
+      { source: "/tutorials", destination: "/producto", permanent: true },
     ];
   },
 };

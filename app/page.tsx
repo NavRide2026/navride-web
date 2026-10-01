@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Inicio",
-  description: `${BRAND.taglineEs}. Beta ${BRAND.version}. Trial 7 días. Suscripción NavRide Adventure vía Google Play.`,
+  description: `${BRAND.taglineEs}. Planifica, importa y sigue rutas GPX desde NavRide.`,
   alternates: { canonical: "/" },
 };
 

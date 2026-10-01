@@ -1,4 +1,4 @@
-import { HISTORY_CAP } from "../track-style.ts";
+import { HISTORY_CAP } from "../track-style";
 
 export type HistoryCommandType =
   | "SNAPSHOT"

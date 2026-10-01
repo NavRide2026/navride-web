@@ -208,42 +208,6 @@
       "web": false
     },
     {
-      "capabilityId": "androidAuto",
-      "title": "Android Auto",
-      "shortDescription": "Misma navegación en el coche (beta).",
-      "detailDescription": "Car App Library consumiendo NavSession — listo para prueba DHU/vehículo; validación hardware pendiente.",
-      "stage": "betaTesters",
-      "minAppVersion": 11352,
-      "releaseOrder": 34,
-      "interestEnabled": true,
-      "app": true,
-      "web": true
-    },
-    {
-      "capabilityId": "safetyContextAlerts",
-      "title": "Avisos de contexto",
-      "shortDescription": "Curvas, grava, barreras… solo con datos.",
-      "detailDescription": "Alertas verificables desde OSM/ruta. Sin crowdsourcing inventado.",
-      "stage": "inDevelopment",
-      "minAppVersion": 11345,
-      "releaseOrder": 35,
-      "interestEnabled": true,
-      "app": true,
-      "web": true
-    },
-    {
-      "capabilityId": "naturalLanguagePlanning",
-      "title": "Planificador en lenguaje natural",
-      "shortDescription": "Describe la ruta; el router la calcula.",
-      "detailDescription": "Arquitectura preparada. Bloqueada si requiere API de pago. La IA no inventa carreteras.",
-      "stage": "disabled",
-      "minAppVersion": 11500,
-      "releaseOrder": 90,
-      "interestEnabled": true,
-      "app": true,
-      "web": true
-    },
-    {
       "capabilityId": "advancedGnssQuality",
       "title": "Calidad GNSS avanzada",
       "shortDescription": "Entorno GNSS para QualityGate futuro.",

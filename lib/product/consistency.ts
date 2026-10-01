@@ -3,7 +3,7 @@
  * PRODUCT CONSISTENCY CONTRADICTIONS debe ser 0.
  */
 import { NAVRIDE_CAPABILITIES, stageToUx } from "../capabilities/catalog";
-import { PRODUCT_FEATURES, type ProductFeature } from "./registry";
+import { PRODUCT_FEATURES } from "./registry";
 
 export type ConsistencyIssue = {
   kind: "status_mismatch" | "missing_capability" | "platform_mismatch";
@@ -59,13 +59,6 @@ export function validateProductConsistency(): ConsistencyIssue[] {
         message: `${feature.id} AVAILABLE en web pero capability.web=false`,
       });
     }
-  }
-
-  // Android Auto: registry BETA vs capability inDevelopment — documentado, no error si web explica beta
-  const aa = PRODUCT_FEATURES.find((f) => f.id === "androidAuto") as ProductFeature | undefined;
-  const aaCap = NAVRIDE_CAPABILITIES.find((c) => c.key === "androidAuto");
-  if (aa && aaCap && aa.status === "BETA" && aaCap.stage === "inDevelopment") {
-    // Coherente: implementado en código, capability gate app hasta v11400
   }
 
   return issues;

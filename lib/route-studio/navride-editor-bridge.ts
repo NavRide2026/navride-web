@@ -1,5 +1,5 @@
 /**
- * NavRideEditorBridge v1 — App ↔ Route Studio (WebView embed).
+ * NavRideEditorBridge v1 — App ↔ Editor de rutas (WebView embed).
  * Closed message set only. No arbitrary executeAnything.
  */
 

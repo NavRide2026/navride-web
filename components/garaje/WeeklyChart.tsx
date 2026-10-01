@@ -51,7 +51,7 @@ export default function WeeklyChart({ data }: WeeklyChartProps) {
             color: "#fff",
             fontSize: 12,
           }}
-          formatter={(value: number) => [`${value.toFixed(1)} km`, "Distancia"]}
+          formatter={(value) => [`${Number(value ?? 0).toFixed(1)} km`, "Distancia"]}
           cursor={{ fill: "rgba(255,255,255,0.04)" }}
         />
         <Bar dataKey="km" radius={[4, 4, 0, 0]}>

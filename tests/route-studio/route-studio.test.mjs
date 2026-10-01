@@ -1,6 +1,6 @@
 /**
  * Pure helpers mirrored for node:test (source of truth: lib/route-studio/*.ts).
- * Tests validate behavior contracts used by Route Studio.
+ * Tests validate behavior contracts used by Editor de rutas.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -146,9 +146,12 @@ test("detectAbsurdDetour flags long winding vs short direct", () => {
   assert.equal(detectAbsurdDetour(wps, longDetour), true);
 });
 
-test("snapClickToRoute contract exists in routing.ts", () => {
+test("snapClickToRoute previews the Valhalla segment", () => {
   const src = readFileSync(join(root, "lib/route-studio/routing.ts"), "utf8");
   assert.match(src, /export async function snapClickToRoute/);
+  assert.match(src, /routeWaypoints\(\[prev, click\], mode, segmentMode\)/);
+  assert.match(src, /profile: `valhalla:/);
+  assert.doesNotMatch(src, /nearestRoadPoint\(/);
   assert.match(src, /export function detectAbsurdDetour/);
   assert.match(src, /osrmProfile: "driving"/);
 });
@@ -221,4 +224,191 @@ test("track-style and satellite-style modules present", () => {
   assert.match(sat, /buildSatelliteStyleSync/);
   assert.match(sat, /buildSatelliteStyleFromLiberty/);
   assert.match(sat, /openmaptiles|tiles\.openfreemap\.org/);
+});
+
+test("editor basemap pins OpenFreeMap source zoom and uses same-origin styles", () => {
+  const style = readFileSync(
+    join(root, "lib/route-studio/editor-map-style.ts"),
+    "utf8",
+  );
+  assert.match(style, /OPENFREEMAP_VECTOR_SOURCE_URL/);
+  assert.match(style, /OPENFREEMAP_PROXY_BASE/);
+  assert.match(style, /proxyOpenFreeMapUrls/);
+  assert.doesNotMatch(style, /World_Street_Map/);
+  assert.doesNotMatch(style, /World_Topo_Map/);
+  assert.doesNotMatch(style, /World_Light_Gray_Base/);
+  assert.doesNotMatch(style, /navride-raster-base/);
+  assert.doesNotMatch(style, /navride-transport-reference/);
+  assert.doesNotMatch(style, /navride-places-reference/);
+  assert.match(style, /maxzoom:\s*14/);
+  assert.match(style, /transportation_name/);
+  assert.match(style, /housenumber/);
+
+  const editor = readFileSync(
+    join(root, "components/gpx/GpxEditor.tsx"),
+    "utf8",
+  );
+  assert.match(editor, /EDITOR_BASE_STYLE_URLS\.liberty/);
+  assert.match(editor, /EDITOR_BASE_STYLE_URLS\.bright/);
+  assert.match(editor, /EDITOR_BASE_STYLE_URLS\.positron/);
+  assert.doesNotMatch(editor, /unpkg\.com\/maplibre-gl@5/);
+
+  const styleRoute = readFileSync(
+    join(root, "app/api/map-style/[style]/route.ts"),
+    "utf8",
+  );
+  assert.match(styleRoute, /tiles\.openfreemap\.org\/styles\/\$\{style\}/);
+  assert.match(styleRoute, /normalizeOpenFreeMapStyle/);
+
+  const mapHook = readFileSync(
+    join(root, "lib/gpx-editor/useGpxMap.ts"),
+    "utf8",
+  );
+  assert.match(mapHook, /loadEditorStyle/);
+  assert.match(mapHook, /setWorkerUrl/);
+  assert.match(mapHook, /buildEditorFallbackStyle/);
+  assert.match(mapHook, /EDITOR_BASE_STYLE_URLS/);
+  assert.doesNotMatch(mapHook, /map\.on\("error"/);
+
+  const satellite = readFileSync(
+    join(root, "lib/route-studio/satellite-style.ts"),
+    "utf8",
+  );
+  assert.match(satellite, /World_Imagery/);
+  assert.match(satellite, /sat-road-casing/);
+  assert.match(satellite, /"source-layer": "transportation"/);
+  assert.match(satellite, /sat-highway-name/);
+  assert.match(satellite, /sat-place-city/);
+
+  const assetProxy = readFileSync(
+    join(root, "app/api/map-assets/[...path]/route.ts"),
+    "utf8",
+  );
+  assert.match(assetProxy, /OPENFREEMAP_UPSTREAM_ORIGIN/);
+  assert.match(assetProxy, /proxyOpenFreeMapUrls/);
+  assert.match(assetProxy, /X-NavRide-Map-Asset/);
+});
+
+
+test("editor canonical map exposes navigable road, trail and access layers", () => {
+  const style = readFileSync(
+    join(root, "lib/route-studio/editor-map-style.ts"),
+    "utf8",
+  );
+  assert.match(style, /"nr-road"/);
+  assert.match(style, /"nr-track"/);
+  assert.match(style, /"nr-path"/);
+  assert.match(style, /cycleway/);
+  assert.match(style, /footway/);
+  assert.match(style, /bridleway/);
+  assert.match(style, /steps/);
+
+  const adapter = readFileSync(
+    join(root, "lib/gpx-editor/map-adapter.ts"),
+    "utf8",
+  );
+  assert.match(adapter, /nav-access-restricted/);
+  assert.match(adapter, /restrictionFilter/);
+  assert.match(adapter, /#ef4444/);
+  assert.match(adapter, /bicycle/);
+  assert.match(adapter, /foot/);
+  assert.match(adapter, /access/);
+  assert.doesNotMatch(adapter, /"line-opacity": casingOpacity\([^\n]+\),\s*"line-cap"/);
+});
+
+test("editor + palette keep import mounted and tool wheel draggable", () => {
+  const editor = readFileSync(
+    join(root, "components/gpx/GpxEditor.tsx"),
+    "utf8",
+  );
+  const palette = readFileSync(
+    join(root, "components/gpx/GpxToolPalette.tsx"),
+    "utf8",
+  );
+  assert.match(editor, /Always mounted: importing from the draggable/);
+  assert.match(editor, /onExport=\{handleDownload\}/);
+  assert.match(editor, /setSidebarCollapsed\(false\)/);
+  assert.match(palette, /navride:gpx-tool-wheel-position-v1/);
+  assert.match(palette, /setPointerCapture/);
+  assert.match(palette, /onMainClick/);
+  assert.match(palette, /Importar GPX/);
+  assert.match(palette, /Exportar GPX/);
+  assert.match(palette, /Mapas y capas/);
+  assert.match(palette, /Marcar ruta/);
+  assert.match(palette, /Enviar a NavRide App/);
+  assert.match(palette, /Seguir carretera/);
+  assert.match(palette, /Caminar/);
+  assert.match(palette, /Nuevo segmento/);
+  assert.match(editor, /Marcar ruta/);
+  assert.match(editor, /if \(follow\) \{/);
+  assert.match(editor, /onLaunch=\{\(\) => void handleLaunch\(\)\}/);
+  assert.match(editor, /onTransportChange=\{handleTransportChange\}/);
+});
+
+test("NavRide web map keeps trail quality and access attributes visible", () => {
+  const style = readFileSync(
+    join(root, "lib/route-studio/editor-map-style.ts"),
+    "utf8",
+  );
+  assert.match(style, /NAVRIDE_TRAIL_LAYER_IDS/);
+  assert.match(style, /injectNavRideTrailLayers/);
+  assert.match(style, /tracktype/);
+  assert.match(style, /surface/);
+  assert.match(style, /nr-access-restricted/);
+  assert.match(style, /motor_vehicle/);
+  assert.match(style, /motorcycle/);
+  assert.match(style, /private/);
+  assert.match(style, /minzoom:\s*9/);
+  assert.match(style, /minzoom:\s*10/);
+});
+
+
+
+test("Spain map and routing authority can be pinned to one dataset id", () => {
+  const styleRoute = readFileSync(
+    join(root, "app/api/map-style/[style]/route.ts"),
+    "utf8",
+  );
+  assert.match(styleRoute, /NAVRIDE_VECTOR_SOURCE_URL/);
+  assert.match(styleRoute, /NAVRIDE_OSM_DATASET_ID/);
+  assert.match(styleRoute, /spain-vector-v1/);
+
+  const routingRoute = readFileSync(
+    join(root, "app/api/gpx-routing/route.ts"),
+    "utf8",
+  );
+  assert.match(routingRoute, /NAVRIDE_VALHALLA_URL/);
+  assert.match(routingRoute, /NAVRIDE_OSM_DATASET_ID/);
+  assert.match(routingRoute, /x-navride-dataset-id/);
+  assert.match(routingRoute, /VALHALLA_DATASET_MISMATCH/);
+  assert.match(routingRoute, /VALHALLA_DATASET_ID_MISSING/);
+});
+
+
+
+test("Spain E2E health gate requires identical vector and Valhalla dataset ids", () => {
+  const health = readFileSync(
+    join(root, "app/api/map-data-health/route.ts"),
+    "utf8",
+  );
+  assert.match(health, /NAVRIDE_VECTOR_SOURCE_URL/);
+  assert.match(health, /NAVRIDE_VALHALLA_URL/);
+  assert.match(health, /NAVRIDE_OSM_DATASET_ID/);
+  assert.match(health, /x-navride-dataset-id/);
+  assert.match(health, /datasetMatch/);
+  assert.match(health, /status: ready \? 200 : 503/);
+
+  const mapRoute = readFileSync(
+    join(root, "app/api/map-style/[style]/route.ts"),
+    "utf8",
+  );
+  assert.match(mapRoute, /spain-vector-v1/);
+  assert.match(mapRoute, /navride:dataset-id/);
+
+  const routingRoute = readFileSync(
+    join(root, "app/api/gpx-routing/route.ts"),
+    "utf8",
+  );
+  assert.match(routingRoute, /VALHALLA_DATASET_MISMATCH/);
+  assert.match(routingRoute, /VALHALLA_DATASET_ID_MISSING/);
 });

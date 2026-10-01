@@ -4,12 +4,12 @@ export const SITE_URL = "https://navride-web.vercel.app" as const;
 
 export const BRAND = {
   name: "NavRide",
-  tagline: "OEM Offroad Navigation",
+  tagline: "Navegación GPX",
   taglineEs: "Navegación offroad orientada a GPX",
   version: "1.0.0",
-  lastUpdated: "2026-09-01",
-  holderName: "Daniel Montero Mora",
-  holderAddress: "Mollet del Vallès, Barcelona, Cataluña, España",
+  lastUpdated: "2026-09-19",
+  holderName: "NavRide Developer",
+  holderAddress: "España",
   supportEmail: "navride@outlook.com",
   privacyPolicyPublicUrl: `${SITE_URL}/legal/politica-privacidad`,
 } as const;
@@ -45,12 +45,6 @@ export const MEDIA_SLOTS: {
     imageSrc: null,
   },
   {
-    id: "rally",
-    title: "Modo Rally",
-    caption: "Tramo siguiente por dificultad — pendiente captura real.",
-    imageSrc: null,
-  },
-  {
     id: "offline",
     title: "Mapas offline",
     caption: "Corredor offline Pilot o capa .mbtiles — pendiente captura real.",
@@ -70,7 +64,6 @@ export const PUBLIC_ROUTES = [
   "/producto",
   "/planes",
   "/funciones",
-  "/android-auto",
   "/roadmap",
   "/novedades",
   "/noticias",
@@ -96,28 +89,31 @@ export const PLANS = {
   free: {
     name: "Free",
     summary:
-      "Uso de la app Android Beta sin paywall de suscripción. Mapa y navegación local no exigen login; cuenta opcional para nube/avisos.",
+      "Funciones básicas de navegación y rutas. Puedes usar una cuenta para sincronizar tus rutas entre dispositivos.",
     price: "0 €",
-    badge: "Beta Android",
+    priceSecondary: "",
+    badge: "Gratis",
     purchasable: false,
   },
   rider: {
     name: "Rider",
     summary:
-      "Plan de referencia UI — no vendido in-app en la app Android Beta actual.",
-    price: "Referencia",
-    badge: "No en Play (Beta)",
-    purchasable: false,
+      "Más capacidad para rutas, kilómetros y favoritos.",
+    price: "2,99 €/mes",
+    priceSecondary: "18,99 €/año",
+    badge: "Mensual / Anual",
+    purchasable: true,
   },
   pilot: {
     name: "Pilot",
     productName: "NavRide Adventure",
     sku: "navride_adventure_monthly",
     summary:
-      "Plan de referencia / futuro. La app Android Beta actual no integra Google Play Billing ni vende esta suscripción.",
-    price: "No disponible in-app",
-    badge: "No en Play (Beta)",
-    purchasable: false,
+      "Más capacidad de uso y acceso a las funciones Pilot disponibles, incluidos mapas offline.",
+    price: "7,99 €/mes",
+    priceSecondary: "59,99 €/año",
+    badge: "Mensual / Anual",
+    purchasable: true,
   },
 } as const;
 
@@ -125,22 +121,17 @@ export const FEATURES = [
   {
     title: "Importar GPX",
     description:
-      "Carga un track y navega punto a punto. Comparte un .gpx desde otra app con «Abrir con NavRide».",
-  },
-  {
-    title: "Modo Rally",
-    description:
-      "Lee el tramo siguiente por dificultad (color). Requiere plan Pilot o Rider con horas disponibles.",
+      "Importa un archivo GPX, visualiza el recorrido y úsalo como referencia durante la navegación.",
   },
   {
     title: "Mapas offline",
     description:
-      "Con Pilot: importa .mbtiles o prepara el corredor de una ruta favorita para navegar sin red en esa ruta.",
+      "Prepara mapas para utilizarlos sin conexión cuando la función esté disponible en tu plan y la zona haya sido descargada previamente.",
   },
   {
     title: "Navegar",
     description:
-      "HUD, indicaciones, seguimiento del track. Approach online hasta el inicio del GPX cuando hay conexión.",
+      "Sigue tu posición, el recorrido y las indicaciones principales desde el mapa y el HUD.",
   },
 ] as const;
 
@@ -166,10 +157,6 @@ export const ROADMAP_ITEMS: {
     status: "completado",
   },
   {
-    title: "Modo Rally: Clasificación por dificultad de tramo",
-    status: "completado",
-  },
-  {
     title: "Mapas Offline (¡Para cuando no hay cobertura!)",
     status: "completado",
   },
@@ -188,15 +175,15 @@ export const ROADMAP_ITEMS: {
 export const NEWS_ITEMS = [
   {
     date: "2026-06-21",
-    title: "¡La Beta Privada ya está aquí!",
+    title: "Beta privada de NavRide",
     excerpt:
-      "Hemos arrancado motores. Un grupo exclusivo de pilotos ya está probando NavRide en el barro. Navegación off-road pura, importación de GPX, modo Rally y mapas sin conexión para llegar donde Google Maps se rinde. ¡Muy pronto abriremos plazas!",
+      "La beta privada permite probar navegación GPX, HUD y mapas en situaciones reales antes de ampliar la disponibilidad.",
   },
   {
     date: "2026-05-30",
-    title: "Preparando el terreno legal",
+    title: "Actualización de documentación legal",
     excerpt:
-      "Nos tomamos tu privacidad tan en serio como tu seguridad en la moto. Hemos adaptado todas nuestras políticas para cumplir con los estándares más estrictos y proteger tus datos de ruta.",
+      "Se ha revisado la documentación de privacidad, condiciones de uso, eliminación de cuenta y atribuciones.",
   },
 ];
 
@@ -234,41 +221,32 @@ export const LEGAL_DOCS: {
 export const ATTRIBUTIONS = [
   {
     title: "OpenStreetMap",
-    detail:
-      "Datos cartográficos © OpenStreetMap contributors, ODbL.",
-    appliesTo: "Todos los modos de mapa",
+    detail: "Datos cartográficos © OpenStreetMap contributors, ODbL.",
+    appliesTo: "Datos de mapa",
     url: "https://www.openstreetmap.org/copyright",
   },
   {
-    title: "CARTO",
-    detail:
-      "Mapa Normal (Voyager): tiles CARTO basados en OpenStreetMap.",
-    appliesTo: "Mapa Normal online y preparación offline",
+    title: "OpenFreeMap / OpenMapTiles",
+    detail: "Mapas vectoriales y etiquetas basados en OpenStreetMap y OpenMapTiles.",
+    appliesTo: "Mapas web",
+    url: "https://openfreemap.org/",
+  },
+  {
+    title: "Esri World Imagery",
+    detail: "Imágenes de la vista satélite con las atribuciones mostradas en el propio mapa.",
+    appliesTo: "Vista satélite web",
+    url: "https://www.esri.com/en-us/legal/terms/full-master-agreement",
+  },
+  {
+    title: "CARTO / OpenTopoMap",
+    detail: "Atribuciones aplicables cuando se utiliza una capa basada en estos servicios.",
+    appliesTo: "Capas compatibles",
     url: "https://carto.com/attributions",
   },
   {
-    title: "OpenTopoMap",
-    detail:
-      "Mapa Topo: © OpenTopoMap (CC-BY-SA), datos OSM, relieve SRTM.",
-    appliesTo: "Mapa Topo online y preparación offline",
-    url: "https://opentopomap.org/about",
-  },
-  {
-    title: "OSRM",
-    detail: "Project OSRM — enrutado y map matching. Datos © OSM.",
-    appliesTo: "Approach y adherencia GPX (con conexión)",
+    title: "Project OSRM",
+    detail: "Servicio de cálculo de rutas online basado en datos de OpenStreetMap.",
+    appliesTo: "Editor de rutas web",
     url: "https://project-osrm.org/",
-  },
-  {
-    title: "Open-Meteo",
-    detail: "Datos meteorológicos opcionales.",
-    appliesTo: "Alertas climáticas (opcional)",
-    url: "https://open-meteo.com/",
-  },
-  {
-    title: "Google Play",
-    detail: "Distribución y facturación de suscripción.",
-    appliesTo: "NavRide Adventure",
-    url: "https://play.google.com/about/play-terms/",
   },
 ] as const;

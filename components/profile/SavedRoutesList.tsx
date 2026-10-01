@@ -57,7 +57,9 @@ export default function SavedRoutesList({ showHeader = true, compact = false }: 
   }, []);
 
   useEffect(() => {
-    void loadRoutes();
+    const timer = window.setTimeout(() => {
+      void loadRoutes();
+    }, 0);
 
     const supabase = createClient();
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -82,6 +84,7 @@ export default function SavedRoutesList({ showHeader = true, compact = false }: 
     });
 
     return () => {
+      window.clearTimeout(timer);
       if (channel) void supabase.removeChannel(channel);
     };
   }, [loadRoutes]);
@@ -146,9 +149,11 @@ export default function SavedRoutesList({ showHeader = true, compact = false }: 
           <p className="text-sm text-white/60">Aún no has guardado ninguna ruta.</p>
           <Link
             href="/editor-gpx"
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-block mt-3 text-sm text-[#f97316] hover:underline"
           >
-            Crear ruta en el editor GPX →
+            Crear ruta en el Editor de rutas →
           </Link>
         </div>
       ) : (
@@ -183,6 +188,15 @@ export default function SavedRoutesList({ showHeader = true, compact = false }: 
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <a
+                    href={`/editor-gpx?routeId=${encodeURIComponent(route.id)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#f97316]/35 bg-[#f97316]/10 px-3 py-1 text-xs text-[#f97316] hover:bg-[#f97316]/20 transition"
+                  >
+                    <Route size={12} />
+                    Ver / editar
+                  </a>
                   <button
                     type="button"
                     onClick={() => {

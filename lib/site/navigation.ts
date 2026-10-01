@@ -1,21 +1,20 @@
-/** SSOT — enlaces del navbar (desktop + móvil). */
+/** Fuente única de enlaces del menú para escritorio, tableta y móvil. */
 export type NavLink = { href: string; label: string };
 
 export const NAV_PUBLIC_LINKS: NavLink[] = [
   { href: "/producto", label: "Producto" },
   { href: "/funciones", label: "Funciones" },
   { href: "/planes", label: "Planes" },
-  { href: "/roadmap", label: "Roadmap" },
+  { href: "/roadmap", label: "Evolución" },
   { href: "/novedades", label: "Novedades" },
   { href: "/contacto", label: "Contacto" },
 ];
 
 export const NAV_APP_LINKS: NavLink[] = [
-  { href: "/mi-garaje", label: "Mi Garaje" },
-  { href: "/mis-rutas", label: "Mis Rutas" },
-  { href: "/editor-gpx", label: "Route Studio" },
+  { href: "/mi-garaje", label: "Mi garaje" },
+  { href: "/mis-rutas", label: "Mis rutas" },
+  { href: "/editor-gpx", label: "Editor de rutas" },
   { href: "/perfil", label: "Perfil" },
-  { href: "/mapa-en-vivo", label: "Mapa en tiempo real" },
 ];
 
-export const NAV_LOGIN = { href: "/login", label: "Iniciar Sesión" } as const;
+export const NAV_LOGIN = { href: "/login", label: "Iniciar sesión" } as const;

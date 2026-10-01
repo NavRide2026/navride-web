@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 export function PlanCard({
   name,
   price,
+  priceSecondary,
   summary,
   badge,
   highlighted,
@@ -10,6 +11,7 @@ export function PlanCard({
 }: {
   name: string;
   price: string;
+  priceSecondary?: string;
   summary: string;
   badge: string;
   highlighted?: boolean;
@@ -17,27 +19,32 @@ export function PlanCard({
 }) {
   return (
     <article
-      className={`rounded-2xl border p-6 md:p-8 flex flex-col gap-4 ${
+      className={`flex flex-col gap-4 rounded-2xl border p-6 md:p-8 ${
         highlighted
-          ? "border-[#FF5A1F]/40 bg-[#1C1C1E] shadow-[0_0_40px_rgba(255,90,31,0.08)]"
+          ? "border-[#FF8500]/40 bg-[#171A1F] shadow-[0_0_40px_rgba(255,133,0,.08)]"
           : "border-white/10 bg-[#101114]"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className="text-xl font-bold text-white">{name}</h3>
+        <h2 className="text-xl font-bold text-white">{name}</h2>
         <Badge
           variant="outline"
           className={
             purchasable
-              ? "border-[#35C759]/40 text-[#35C759]"
+              ? "border-[#8BEA00]/40 text-[#8BEA00]"
               : "border-white/20 text-white/60"
           }
         >
           {badge}
         </Badge>
       </div>
-      <p className="text-2xl font-semibold text-[#FF5A1F]">{price}</p>
-      <p className="text-white/70 text-sm leading-relaxed flex-1">{summary}</p>
+      <div>
+        <p className="text-2xl font-semibold text-[#FF8500]">{price}</p>
+        {priceSecondary ? (
+          <p className="mt-1 text-sm text-white/50">{priceSecondary}</p>
+        ) : null}
+      </div>
+      <p className="flex-1 text-sm leading-relaxed text-white/70">{summary}</p>
     </article>
   );
 }

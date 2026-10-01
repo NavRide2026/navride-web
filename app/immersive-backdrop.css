@@ -1,0 +1,39 @@
+.immersive-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  min-height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  color: rgba(110,122,132,.18);
+  background: linear-gradient(180deg,#050608 0%,#080a0d 48%,#050608 100%);
+}
+
+.immersive-backdrop svg { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 900px; opacity: .82; }
+.immersive-contours { animation: immersiveTopo 22s ease-in-out infinite alternate; }
+.immersive-light { position: absolute; width: 44vw; aspect-ratio: 1; border-radius: 50%; filter: blur(90px); opacity: .13; }
+.immersive-light-orange { top: 8%; left: -15%; background: #ff8500; }
+.immersive-light-green { top: 48%; right: -18%; background: #8bea00; opacity: .07; }
+.immersive-route,.immersive-route-glow { fill:none; stroke-linecap:round; stroke-linejoin:round; }
+.immersive-route-glow { stroke:rgba(255,133,0,.12); stroke-width:20; filter:blur(9px); }
+.immersive-route { stroke:rgba(255,133,0,.52); stroke-width:4; stroke-dasharray:1; stroke-dashoffset:1; animation:immersiveRoute 2.8s cubic-bezier(.2,.8,.2,1) forwards; }
+.immersive-route-points { fill:#8bea00; stroke:#080a0d; stroke-width:5; opacity:0; animation:immersivePoints .6s ease 2s forwards; }
+.immersive-vignette { position:absolute; inset:0; background:linear-gradient(90deg,rgba(5,6,8,.68),transparent 45%,rgba(5,6,8,.35)),linear-gradient(180deg,rgba(5,6,8,.18),transparent 30%,rgba(5,6,8,.62)); }
+
+.site-page-content { position:relative; z-index:1; }
+.site-page-content > div:not(.route-motion) { position:relative; }
+
+@keyframes immersiveTopo { from{transform:translate3d(-10px,-7px,0)} to{transform:translate3d(14px,10px,0)} }
+@keyframes immersiveRoute { to{stroke-dashoffset:0} }
+@keyframes immersivePoints { to{opacity:1} }
+
+@media(max-width:768px){
+  .immersive-backdrop svg{width:180%;transform:translateX(-34%);opacity:.65}
+  .immersive-route{stroke-width:5}
+  .immersive-light{width:85vw}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .immersive-contours,.immersive-route,.immersive-route-points{animation:none!important}
+  .immersive-route{stroke-dashoffset:0}.immersive-route-points{opacity:1}
+}

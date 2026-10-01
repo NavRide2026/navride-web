@@ -1,1125 +1,1878 @@
 "use client";
 
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/refs, react-hooks/immutability, react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
-
-/**
- * NavRide GPX Editor — mapa primero.
- * Core: lib/gpx-editor (anchors, undo, crop/split/merge, lossless GPX).
- * Routing: red OSM maestra (Valhalla permanece en navegación App).
- * No clona editores de terceros. No GraphHopper.
- */
-
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import type { Map as MapLibreMap, MapLayerMouseEvent, MapMouseEvent, MapTouchEvent } from "maplibre-gl";
+import { useGpxEditorStore } from "@/lib/gpx-editor/editor-store";
+import type { LngLat, Segment, StyleId, WaypointKind } from "@/lib/gpx-editor/editor-types";
 import {
-  Undo2, Redo2, Download, Plus, Layers, Wrench,
-  Loader2, X, Crosshair, Upload, Search, ChevronUp, ChevronDown,
-} from "lucide-react";
+  GpxMapAdapter,
+  LYR_POINTS,
+  LYR_ROUTE_NOTES,
+} from "@/lib/gpx-editor/map-adapter";
+import { useGpxMap } from "@/lib/gpx-editor/useGpxMap";
 import {
-  CompatibilityPromptCard,
-  CompatibilityAltPreview,
-  RouteCompatibilityReview,
-  type CompatPrompt,
-} from "@/components/gpx/RouteCompatibilityPanel";
-import { fetchWaysAround, fetchWaysAlongRoute } from "@/lib/route-studio/route-compatibility-overpass";
-import { compatibleWaysOnly, routeOnOsmNetwork, snapClickToOsmNetwork } from "@/lib/route-studio/editor-osm-network";
+  routeForMode,
+  rerouteAllSegments,
+  rerouteActiveSegment,
+} from "@/lib/gpx-editor/routing-controller";
+import { EditorHistory } from "@/lib/gpx-editor/editor-history";
 import {
-  POI_CATEGORIES,
-  POI_MODE_DEFAULTS,
-  fetchPoisBbox,
-  PoiTileStore,
-  type PoiCategory,
-  type NavRidePoi,
-} from "@/lib/route-studio/navride-poi";
+  appendSegment,
+  clearActiveSegment,
+  closeLoopWaypoints,
+  deleteSegment,
+  joinWithNextSegment,
+  recolorSegment,
+  removeWaypoint,
+  renameSegment,
+  reorderWaypoint,
+  reverseRoute,
+  splitSegmentAt,
+} from "@/lib/gpx-editor/editor-commands";
 import {
-  auditRouteGeometry,
-  type CompatibilityAudit,
-  type CompatibilityIssue,
-} from "@/lib/route-studio/route-compatibility-audit";
-import { type TransportMode } from "@/lib/route-studio/routing";
-import { buildSatelliteStyleSync } from "@/lib/route-studio/satellite-style";
-import { parseGpxFile, type RouteCapsule } from "@/lib/route-studio/navride-route/gpx-codec";
-import { createEmptyRoute, type NavRideRoute } from "@/lib/route-studio/navride-route/types";
+  applyAppCurrentLocation as applyAppCurrentLocationCommand,
+  applyAppLocationError as applyAppLocationErrorCommand,
+  fitRouteViewport,
+  requestCurrentLocation,
+} from "@/lib/gpx-editor/location-controller";
+import { downloadOrSendGpx } from "@/lib/gpx-editor/export-gpx";
 import {
-  postToNavRideApp,
-  registerAppToEditorHandler,
-  newBridgeRequestId,
-  type NavRideEditorBridgeMessage,
-} from "@/lib/route-studio/navride-editor-bridge";
-import { emptyDocument, GpxEditorEngine, visibleAnchors, lngLatsOf, allPoints, computeStats, elevationProfile, estimateSimplify, nearestOnPolyline, pointAtDistanceM, type GpxDocument, type ToolId, type TraceMode } from "@/lib/gpx-editor";
-import { serializeGpx } from "@/lib/gpx-editor/serialize";
-import type { LngLat } from "@/lib/gpx-editor/geo";
-import type { OsmWay } from "@/lib/route-studio/route-compatibility-snap";
+  parseGpxUpload,
+  rebuildImportedGeometry,
+  type ImportedGeometry,
+} from "@/lib/gpx-editor/import-gpx";
+import {
+  cuePlacementMessage,
+  deleteCue,
+  toggleWaypointViaShaping,
+  updateCueSeverity,
+} from "@/lib/gpx-editor/route-notes-controller";
+import { GpxFloatingToolbar } from "@/components/gpx/GpxFloatingToolbar";
+import { GpxNavTools } from "@/components/gpx/GpxNavTools";
+import { GpxToolPalette } from "@/components/gpx/GpxToolPalette";
+import { GpxImportDialog, type ImportChoice } from "@/components/gpx/GpxImportDialog";
+import { GpxPointContextMenu, type PointMenuAction } from "@/components/gpx/GpxPointContextMenu";
+import { GpxWayInspector, propsToWayInspector, type WayInspectorData } from "@/components/gpx/GpxWayInspector";
+import { GpxRouteAnalysisPanel } from "@/components/gpx/GpxRouteAnalysisPanel";
+import { GpxAlternativesPanel } from "@/components/gpx/GpxAlternativesPanel";
+import { analyzeRouteMetrics } from "@/lib/gpx-editor/route-analysis";
+import { analyzeRouteHealth } from "@/lib/route-studio/route-health";
+import {
+  persistRouteToCloud,
+  routeSignature as computeRouteSignature,
+} from "@/lib/gpx-editor/persistence";
+import {
+  persistRouteToApp,
+  useNavRideAppBridge,
+} from "@/lib/gpx-editor/app-bridge-controller";
+import {
+  useEditorDraftAutosave,
+} from "@/lib/gpx-editor/use-editor-draft";
+import { Loader2 } from "lucide-react";
+import {
+  tryOpenNavRideApp,
+  buildRouteDeepLinks,
+  copyRouteLink,
+} from "@/lib/gpx/saveRouteToCloud";
+import {
+  snapClickToRoute,
+  type TransportMode,
+} from "@/lib/route-studio/routing";
+import {
+  DEFAULT_ROUTE_SEGMENT_MODE,
+  parseRouteSegmentMode,
+  pathKindForSegmentMode,
+  isRoutedSegmentMode,
+  type RouteSegmentMode,
+} from "@/lib/route-studio/segment-routing-mode";
+import { clearDraft } from "@/lib/route-studio/autosave";
+import { type EditorMode } from "@/lib/route-studio/mode-capabilities";
+import {
+  DEFAULT_TRACK_WIDTH,
+  DEFAULT_TRACK_OPACITY,
+  ensureMinBrightness,
+} from "@/lib/route-studio/track-style";
+import {
+  buildSatelliteStyleSync,
+} from "@/lib/route-studio/satellite-style";
+import {
+  EDITOR_BASE_STYLE_URLS,
+} from "@/lib/route-studio/editor-map-style";
+import {
+  type RouteCapsule,
+} from "@/lib/route-studio/navride-route/gpx-codec";
+import {
+  type NavRideCue,
+  type NavRideCueSeverity,
+  type NavRideRoute,
+} from "@/lib/route-studio/navride-route/types";
+import {
+  createCue,
+} from "@/lib/route-studio/cues";
+import { reprojectCuesOnTrack } from "@/lib/route-studio/route-notes-geojson";
+import {
+  EDITOR_MAX_SNAP_METERS,
+  NOTE_OFF_TRACK_METERS,
+  flattenRouteLngLats,
+  progressMNearestOnPolyline,
+} from "@/lib/route-studio/geo";
 
-type StyleId = "liberty" | "satellite" | "topo" | "bright";
-
-const OPEN_TOPO_STYLE = {
-  version: 8,
-  name: "NavRide Topografico",
-  sources: {
-    opentopo: {
-      type: "raster",
-      tiles: [
-        "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
-        "https://b.tile.opentopomap.org/{z}/{x}/{y}.png",
-        "https://c.tile.opentopomap.org/{z}/{x}/{y}.png",
-      ],
-      tileSize: 256,
-      attribution: "© OpenStreetMap, SRTM | © OpenTopoMap (CC-BY-SA)",
-    },
-  },
-  layers: [
-    { id: "background", type: "background", paint: { "background-color": "#e8e0d8" } },
-    { id: "opentopo", type: "raster", source: "opentopo", minzoom: 0, maxzoom: 17 },
-  ],
-};
-
-const MAP_STYLES: { id: StyleId; label: string }[] = [
-  { id: "liberty", label: "Carretera" },
-  { id: "topo", label: "Topográfico" },
-  { id: "satellite", label: "Satélite" },
-  { id: "bright", label: "Outdoor / caminos" },
+// ─── Map styles ───────────────────────────────────────────────────────────────
+const MAP_STYLES: { id: StyleId; label: string; url: string | object }[] = [
+  { id: "liberty",   label: "Carretera",      url: EDITOR_BASE_STYLE_URLS.liberty  },
+  { id: "bright",    label: "Adventure",      url: EDITOR_BASE_STYLE_URLS.bright   },
+  { id: "positron",  label: "Topo / Offroad", url: EDITOR_BASE_STYLE_URLS.positron },
+  { id: "satellite", label: "Satélite",       url: buildSatelliteStyleSync()       },
 ];
 
-function styleUrl(id: StyleId): string | object {
-  if (id === "liberty") return "https://tiles.openfreemap.org/styles/liberty";
-  if (id === "topo") return OPEN_TOPO_STYLE;
-  if (id === "satellite") return buildSatelliteStyleSync();
-  return "https://tiles.openfreemap.org/styles/bright";
-}
-
-const SRC_LINE = "nr-gpx-line";
-const SRC_ANCHOR = "nr-gpx-anchors";
-const SRC_WPT = "nr-gpx-wpt";
-const SRC_POI = "nr-gpx-poi";
-const SRC_HL = "nr-gpx-hl";
-const SRC_MARK = "nr-gpx-mark";
-const SRC_ARROWS = "nr-gpx-arrows";
-const SRC_COMPAT = "nr-gpx-compat";
-const SRC_USER = "nr-gpx-user";
-
-const PROFILES: { id: TransportMode; label: string; icon: string }[] = [
-  { id: "car", label: "COCHE", icon: "🚗" },
-  { id: "moto", label: "MOTO", icon: "🏍" },
-  { id: "bike", label: "BICI", icon: "🚲" },
-  { id: "walk", label: "CAMINAR", icon: "🚶" },
+// ─── Constants ────────────────────────────────────────────────────────────────
+const COLORS = [
+  { label: "Naranja", value: "#f97316", desc: "General"            },
+  { label: "Rojo",    value: "#ef4444", desc: "Trialera / Difícil" },
+  { label: "Verde",   value: "#22c55e", desc: "Pista rápida"       },
+  { label: "Azul",    value: "#3b82f6", desc: "Asfalto"            },
+  { label: "Amarillo",value: "#eab308", desc: "Pista media"        },
+  { label: "Morado",  value: "#a855f7", desc: "Single track"       },
+  { label: "Blanco",  value: "#e5e7eb", desc: "Marcador"           },
 ];
 
-function exportGpx(doc: GpxDocument, capsule: RouteCapsule | null): string {
-  return serializeGpx({ ...doc, capsule: capsule ?? doc.capsule });
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function uid(): string { return Math.random().toString(36).slice(2, 9); }
+
+
+
+function ensureWaypointKinds(seg: Segment): WaypointKind[] {
+  const kinds = seg.waypointKinds ? [...seg.waypointKinds] : [];
+  while (kinds.length < seg.waypoints.length) kinds.push("via");
+  return kinds.slice(0, seg.waypoints.length);
 }
 
-function buildRouteJson(doc: GpxDocument, title: string, routeId?: string | null): NavRideRoute {
-  const pts = allPoints(doc);
-  return createEmptyRoute({
-    routeId: routeId || `web-${Date.now()}`,
-    name: title,
-    geometry: { points: pts.map((p) => ({ lat: p.lat, lon: p.lon, ele: p.ele })) },
-    routeProfile: "moto",
-  });
+function mkSeg(color = COLORS[0].value): Segment {
+  return {
+    id: uid(),
+    name: "Segmento",
+    color: ensureMinBrightness(color),
+    waypoints: [],
+    waypointKinds: [],
+    routePoints: [],
+    routeSegmentMode: DEFAULT_ROUTE_SEGMENT_MODE,
+    pathKind: "routed",
+  };
 }
+
+// ─── Component ────────────────────────────────────────────────────────────────
+const INIT_SEG = mkSeg();
 
 export default function GpxEditor({
   embedNavRideApp = false,
 }: {
   embedNavRideApp?: boolean;
 }) {
+  const router = useRouter();
   const mapContainer = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
-  const engineRef = useRef(new GpxEditorEngine());
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const mapReadyRef = useRef(false);
+  const mapAdapterRef = useRef<GpxMapAdapter | null>(null);
+  const originalImportRef = useRef<Segment[] | null>(null);
+  const lastMapClickTsRef = useRef(0);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [pointMenu, setPointMenu] = useState<{
+    x: number;
+    y: number;
+    segId: string;
+    idx: number;
+  } | null>(null);
+  const [wayInspector, setWayInspector] = useState<WayInspectorData | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [showAlternatives, setShowAlternatives] = useState(false);
+
+  const [editorState, editorActions] = useGpxEditorStore(INIT_SEG);
+  const {
+    segments,
+    activeId,
+    mapStyleId,
+    routeTitle,
+    routing,
+    histIdx,
+    histLen,
+    uploading,
+    saving,
+    savedRouteId,
+    savedSignature,
+    transportMode,
+    editorMode,
+    routeError,
+    locating,
+
+    activeWpt,
+    trackWidth,
+    trackOpacity,
+    userLngLat,
+    insertMode,
+    cues,
+    selectedCueId,
+    cueDraftSeverity,
+    cueDraftMessage,
+    placeNotePending,
+    drawMode,
+    importDialog,
+
+    styleMenuOpen,
+  } = editorState;
+  const {
+    setSegments,
+    setActiveId,
+    setMapStyleId,
+    setRouteTitle,
+    setRouting,
+    setHistIdx,
+    setHistLen,
+    setUploading,
+    setSaving,
+    setUploadMsg,
+    setSavedRouteId,
+    setSavedSignature,
+    setTransportMode,
+    setEditorMode,
+    setRouteError,
+    setLocating,
+    setDraftBanner,
+
+    setActiveWpt,
+    setUserLngLat,
+    setInsertMode,
+    setCues,
+    setSelectedCueId,
+    setCueDraftSeverity,
+    setCueDraftMessage,
+    setPlaceNotePending,
+    setDrawMode,
+    setImportDialog,
+
+    setStyleMenuOpen,
+  } = editorActions;
+  const gpxFileInputRef = useRef<HTMLInputElement>(null);
+  const cuesRef = useRef<NavRideCue[]>([]);
+  /** Preserved NavRide Route Capsule across open→edit→save (never silently drop). */
   const capsuleRef = useRef<RouteCapsule | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const poiStore = useRef(new PoiTileStore());
-  const [doc, setDoc] = useState(() => emptyDocument());
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
-  const redraw = useCallback(() => {
-    const e = engineRef.current;
-    setDoc(e.snapshot());
-    setCanUndo(e.canUndo);
-    setCanRedo(e.canRedo);
+  const pendingLocateReqRef = useRef<string | null>(null);
+  const drawModeRef = useRef<RouteSegmentMode>(DEFAULT_ROUTE_SEGMENT_MODE);
+  const placeNotePendingRef = useRef(false);
+  const routeGenerationRef = useRef(0);
+  const cueDraftMessageRef = useRef("");
+  const cueDraftSeverityRef = useRef<NavRideCueSeverity>("attention");
+
+  const transportModeRef = useRef<TransportMode>("moto");
+  const editorModeRef = useRef<EditorMode>("simple");
+  const trackWidthRef = useRef(DEFAULT_TRACK_WIDTH);
+  const trackOpacityRef = useRef(DEFAULT_TRACK_OPACITY);
+  const mapStyleIdRef = useRef<StyleId>("liberty");
+  const activeWptRef = useRef<{ segId: string; idx: number } | null>(null);
+  const insertModeRef = useRef(false);
+
+  // Refs to avoid stale closures inside map handlers
+  const segsRef      = useRef<Segment[]>([INIT_SEG]);
+  const activeIdRef  = useRef<string>(INIT_SEG.id);
+  const historyRef = useRef(new EditorHistory([INIT_SEG]));
+  const styleChangingRef = useRef(false);
+
+  useEffect(() => { segsRef.current = segments; },   [segments]);
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+  useEffect(() => { cuesRef.current = cues; }, [cues]);
+  useEffect(() => { transportModeRef.current = transportMode; }, [transportMode]);
+  useEffect(() => { editorModeRef.current = editorMode; }, [editorMode]);
+  useEffect(() => { trackWidthRef.current = trackWidth; }, [trackWidth]);
+  useEffect(() => { trackOpacityRef.current = trackOpacity; }, [trackOpacity]);
+  useEffect(() => { mapStyleIdRef.current = mapStyleId; }, [mapStyleId]);
+  useEffect(() => { activeWptRef.current = activeWpt; }, [activeWpt]);
+  useEffect(() => { insertModeRef.current = insertMode; }, [insertMode]);
+  useEffect(() => { drawModeRef.current = drawMode; }, [drawMode]);
+  useEffect(() => { placeNotePendingRef.current = placeNotePending; }, [placeNotePending]);
+  useEffect(() => { cueDraftMessageRef.current = cueDraftMessage; }, [cueDraftMessage]);
+  useEffect(() => { cueDraftSeverityRef.current = cueDraftSeverity; }, [cueDraftSeverity]);
+
+  useEditorDraftAutosave({
+    segments,
+    routeTitle,
+    transportMode,
+    editorMode,
+  });
+
+  // ── Map sync ──
+  const syncMap = useCallback(
+    (
+      nextSegments: Segment[],
+      selection?: { segId: string; idx: number } | null,
+    ) => {
+      mapAdapterRef.current?.setGeometry(
+        nextSegments,
+        selection === undefined ? activeWptRef.current : selection,
+      );
+    },
+    [],
+  );
+
+  const applyTrackPaint = useCallback(() => {
+    mapAdapterRef.current?.applyTrackPaint(
+      mapStyleIdRef.current,
+      trackWidthRef.current,
+      trackOpacityRef.current,
+    );
   }, []);
 
-  const [title, setTitle] = useState("Mi ruta");
-  const [mode, setMode] = useState<TransportMode>("moto");
-  const [trace, setTrace] = useState<TraceMode>("FOLLOW_WAYS");
-  const [mapStyleId, setMapStyleId] = useState<StyleId>("liberty");
-  const [panel, setPanel] = useState<"none" | "tools" | "layers" | "poi" | "tracks">("none");
-  const [tool, setTool] = useState<ToolId>("none");
-  const [routing, setRouting] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState<CompatPrompt | null>(null);
-  const [altPreview, setAltPreview] = useState<LngLat[] | null>(null);
-  const [findingAlt, setFindingAlt] = useState(false);
-  const [audit, setAudit] = useState<CompatibilityAudit | null>(null);
-  const [crop, setCrop] = useState<[number, number] | null>(null);
-  const [simplify, setSimplify] = useState(12);
-  const [poiOn, setPoiOn] = useState(false);
-  const [poiCats, setPoiCats] = useState<PoiCategory[]>([]);
-  const [pois, setPois] = useState<NavRidePoi[]>([]);
-  const [poiPick, setPoiPick] = useState<NavRidePoi | null>(null);
-  const [showArrows, setShowArrows] = useState(false);
-  const [showMarks, setShowMarks] = useState(false);
-  const [pitch3d, setPitch3d] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(true);
-  const [hlDistM, setHlDistM] = useState<number | null>(null);
-  const [search, setSearch] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [savedRouteId, setSavedRouteId] = useState<string | null>(null);
-  const [selectedIssue, setSelectedIssue] = useState<CompatibilityIssue | null>(null);
-  const [wptEdit, setWptEdit] = useState<{ id: string; name: string; desc: string } | null>(null);
-  const zoomRef = useRef(12);
-  const waysCache = useRef<OsmWay[]>([]);
-  const pendingClick = useRef<LngLat | null>(null);
+  const syncUserMarker = useCallback((point: LngLat | null) => {
+    mapAdapterRef.current?.setUserMarker(point);
+  }, []);
 
-  useEffect(() => {
-    engineRef.current.mode = mode;
-    engineRef.current.followRoads = trace;
-    engineRef.current.doc.name = title;
-  }, [mode, trace, title]);
+  const syncRouteNotes = useCallback((
+    nextCues: NavRideCue[] = cuesRef.current,
+    nextSegments: Segment[] = segsRef.current,
+  ) => {
+    mapAdapterRef.current?.setNotes(nextCues, nextSegments);
+  }, []);
 
-  const stats = computeStats(doc, crop ? { startM: crop[0], endM: crop[1] } : null);
-  const profile = elevationProfile(doc, 40);
-  const multi = doc.tracks.length > 1 || doc.tracks[0]?.segments.length > 1;
-  const simEst = estimateSimplify(doc, simplify);
+  useEffect(() => { syncMap(segments); }, [segments, syncMap, activeWpt]);
+  useEffect(() => { applyTrackPaint(); }, [trackWidth, trackOpacity, mapStyleId, applyTrackPaint]);
+  useEffect(() => { syncUserMarker(userLngLat); }, [userLngLat, syncUserMarker]);
+  useEffect(() => { syncRouteNotes(cues, segments); }, [cues, segments, syncRouteNotes]);
 
-  const syncMap = useCallback(() => {
-    const m = mapRef.current;
-    if (!m) return;
-    const line = lngLatsOf(doc);
-    const fc = {
-      type: "FeatureCollection",
-      features: line.length >= 2
-        ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line } }]
-        : [],
-    };
-    const anchors = visibleAnchors(doc, zoomRef.current);
-    const afc = {
-      type: "FeatureCollection",
-      features: anchors.map((a) => ({
-        type: "Feature",
-        properties: { ti: a.trackIndex, si: a.segmentIndex, pi: a.pointIndex },
-        geometry: { type: "Point", coordinates: [a.lon, a.lat] },
-      })),
-    };
-    const wfc = {
-      type: "FeatureCollection",
-      features: doc.waypoints.map((w) => ({
-        type: "Feature",
-        properties: { id: w.id, name: w.name },
-        geometry: { type: "Point", coordinates: [w.lon, w.lat] },
-      })),
-    };
-    const src = m.getSource(SRC_LINE);
-    if (src) src.setData(fc);
-    const as = m.getSource(SRC_ANCHOR);
-    if (as) as.setData(afc);
-    const ws = m.getSource(SRC_WPT);
-    if (ws) ws.setData(wfc);
+  // ── History ──
+  const syncHistoryMeta = useCallback(() => {
+    setHistIdx(historyRef.current.currentIndex);
+    setHistLen(historyRef.current.length);
+  }, [setHistIdx, setHistLen]);
 
-    const marks: { type: string; properties: Record<string, string>; geometry: { type: string; coordinates: number[] } }[] = [];
-    if (showMarks && line.length >= 2) {
-      const total = stats.distanceM;
-      for (let km = 1000; km < total; km += 1000) {
-        const p = pointAtDistanceM(line, km);
-        if (p) {
-          marks.push({
-            type: "Feature",
-            properties: { label: `${Math.round(km / 1000)}` },
-            geometry: { type: "Point", coordinates: p },
-          });
-        }
-      }
-    }
-    const ms = m.getSource(SRC_MARK);
-    if (ms) ms.setData({ type: "FeatureCollection", features: marks });
-    const arrows = m.getSource(SRC_ARROWS);
-    if (arrows) arrows.setData(showArrows ? fc : { type: "FeatureCollection", features: [] });
+  const pushHist = useCallback((nextSegments: Segment[]) => {
+    historyRef.current.push(nextSegments);
+    syncHistoryMeta();
+  }, [syncHistoryMeta]);
 
-    const hl: { type: string; properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } }[] = [];
-    if (hlDistM != null && line.length >= 2) {
-      const p = pointAtDistanceM(line, hlDistM);
-      if (p) {
-        hl.push({
-          type: "Feature",
-          properties: {},
-          geometry: { type: "Point", coordinates: p },
-        });
-      }
-    }
-    if (selectedIssue) {
-      hl.push({
-        type: "Feature",
-        properties: { issue: true },
-        geometry: { type: "LineString", coordinates: selectedIssue.geometry },
-      });
-    }
-    const hs = m.getSource(SRC_HL);
-    if (hs) hs.setData({ type: "FeatureCollection", features: hl });
+  const bindMapEvents = useCallback((m: MapLibreMap) => {
+      let dragInfo: { segId: string; ptIdx: number } | null = null;
 
-    const pfc = {
-      type: "FeatureCollection",
-      features: poiOn
-        ? pois.map((p) => ({
-            type: "Feature",
-            properties: { id: p.id, cat: p.category, name: p.name ?? p.category },
-            geometry: { type: "Point", coordinates: [p.lon, p.lat] },
-          }))
-        : [],
-    };
-    const ps = m.getSource(SRC_POI);
-    if (ps) ps.setData(pfc);
-  }, [doc, hlDistM, poiOn, pois, selectedIssue, showArrows, showMarks, stats.distanceM]);
+      m.on("click", LYR_ROUTE_NOTES, (e: MapLayerMouseEvent) => {
+        if (!e.features?.[0]) return;
+        e.originalEvent?.stopPropagation?.();
+        const id = String(e.features[0].properties?.id ?? "");
+        if (id) setSelectedCueId(id);
+      });
 
-  useEffect(() => { syncMap(); }, [syncMap, doc, tool, panel]);
+      m.on("click", LYR_POINTS, (e: MapLayerMouseEvent) => {
+        if (!e.features?.[0]) return;
+        e.originalEvent?.stopPropagation?.();
+        const props = e.features[0].properties;
+        const sel = { segId: String(props?.segId), idx: Number(props?.ptIdx) };
+        setActiveWpt(sel);
+        activeWptRef.current = sel;
+        setActiveId(sel.segId);
+        activeIdRef.current = sel.segId;
+        syncMap(segsRef.current, sel);
+      });
 
-  const ensureLayers = useCallback((m: any) => {
-    if (!m.getSource(SRC_LINE)) {
-      m.addSource(SRC_LINE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      m.addLayer({
-        id: "nr-line-casing",
-        type: "line",
-        source: SRC_LINE,
-        paint: { "line-color": "#111", "line-width": 8, "line-opacity": 0.55 },
-      });
-      m.addLayer({
-        id: "nr-line",
-        type: "line",
-        source: SRC_LINE,
-        paint: { "line-color": "#f97316", "line-width": 4.5, "line-opacity": 0.98 },
-      });
-    }
-    if (!m.getSource(SRC_ARROWS)) {
-      m.addSource(SRC_ARROWS, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      m.addLayer({
-        id: "nr-arrows",
-        type: "symbol",
-        source: SRC_ARROWS,
-        layout: {
-          "symbol-placement": "line",
-          "text-field": "▶",
-          "text-size": 12,
-          "symbol-spacing": 70,
-        },
-        paint: { "text-color": "#fff", "text-halo-color": "#111", "text-halo-width": 1 },
-      });
-    }
-    if (!m.getSource(SRC_HL)) {
-      m.addSource(SRC_HL, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      m.addLayer({
-        id: "nr-hl-line",
-        type: "line",
-        source: SRC_HL,
-        filter: ["==", ["geometry-type"], "LineString"],
-        paint: { "line-color": "#22d3ee", "line-width": 7, "line-opacity": 0.85 },
-      });
-      m.addLayer({
-        id: "nr-hl-pt",
-        type: "circle",
-        source: SRC_HL,
-        filter: ["==", ["geometry-type"], "Point"],
-        paint: { "circle-radius": 8, "circle-color": "#22d3ee", "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
-      });
-    }
-    if (!m.getSource(SRC_COMPAT)) {
-      m.addSource(SRC_COMPAT, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      m.addLayer({
-        id: "nr-compat",
-        type: "line",
-        source: SRC_COMPAT,
-        paint: { "line-color": "#ef4444", "line-width": 6, "line-opacity": 0.7 },
-      });
-    }
-    if (!m.getSource(SRC_ANCHOR)) {
-      m.addSource(SRC_ANCHOR, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      m.addLayer({
-        id: "nr-anchors",
-        type: "circle",
-        source: SRC_ANCHOR,
-        paint: {
-          "circle-radius": embedNavRideApp ? 11 : 7,
-          "circle-color": "#fff",
-          "circle-stroke-width": 3,
-          "circle-stroke-color": "#f97316",
-        },
-      });
-    }
-    if (!m.getSource(SRC_WPT)) {
-      m.addSource(SRC_WPT, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      m.addLayer({
-        id: "nr-wpt",
-        type: "circle",
-        source: SRC_WPT,
-        paint: { "circle-radius": 7, "circle-color": "#22c55e", "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
-      });
-    }
-    if (!m.getSource(SRC_MARK)) {
-      m.addSource(SRC_MARK, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      m.addLayer({
-        id: "nr-marks",
-        type: "symbol",
-        source: SRC_MARK,
-        layout: { "text-field": ["get", "label"], "text-size": 11 },
-        paint: { "text-color": "#fff", "text-halo-color": "#000", "text-halo-width": 1.2 },
-      });
-    }
-    if (!m.getSource(SRC_POI)) {
-      m.addSource(SRC_POI, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      m.addLayer({
-        id: "nr-poi",
-        type: "circle",
-        source: SRC_POI,
-        paint: { "circle-radius": 6, "circle-color": "#38bdf8", "circle-stroke-width": 1.5, "circle-stroke-color": "#fff" },
-      });
-    }
-    if (!m.getSource(SRC_USER)) {
-      m.addSource(SRC_USER, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      m.addLayer({
-        id: "nr-user",
-        type: "circle",
-        source: SRC_USER,
-        paint: { "circle-radius": 7, "circle-color": "#3b82f6", "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
-      });
-    }
-  }, [embedNavRideApp]);
+      m.on("click", async (e: MapMouseEvent) => {
+        const native = e.originalEvent as MouseEvent | undefined;
+        if (native && typeof native.detail === "number" && native.detail > 1) return;
+        const now = Date.now();
+        if (now - lastMapClickTsRef.current < 280) return;
+        lastMapClickTsRef.current = now;
 
-  const routePair = useCallback(async (from: LngLat, to: LngLat, gen: number): Promise<LngLat[] | null> => {
-    if (trace === "STRAIGHT") return [from, to];
-    const fetched = await fetchWaysAround(to, 80);
-    if (engineRef.current.isStale(gen)) return null;
-    if (!fetched.ok) {
-      setStatus("Servicio de cartografía no disponible.");
-      return [from, to];
-    }
-    waysCache.current = fetched.ways;
-    const path = routeOnOsmNetwork(fetched.ways, from, to, mode);
-    if (engineRef.current.isStale(gen)) return null;
-    return path;
-  }, [mode, trace]);
+        const noteHit = m.queryRenderedFeatures(e.point, { layers: [LYR_ROUTE_NOTES] });
+        if (noteHit.length > 0) return;
+        const hit = m.queryRenderedFeatures(e.point, { layers: [LYR_POINTS] });
+        if (hit.length > 0) return;
+        if (styleChangingRef.current) return;
 
-  const handleMapClick = useCallback(async (lng: number, lat: number) => {
-    const click: LngLat = [lng, lat];
-    if (tool === "waypoint") {
-      engineRef.current.addWpt(lat, lng);
-      redraw();
-      return;
-    }
-    if (tool === "split") {
-      const near = nearestOnPolyline(click, lngLatsOf(engineRef.current.doc));
-      if (near && near.distanceM < 40) {
-        engineRef.current.split(near.index, embedNavRideApp ? "segments" : "tracks");
-        setTool("none");
-        redraw();
-      }
-      return;
-    }
-    if (tool === "select") return;
-
-    const line = lngLatsOf(engineRef.current.doc);
-    if (line.length >= 2) {
-      const near = nearestOnPolyline(click, line);
-      if (near && near.distanceM < 18) {
-        const gen = engineRef.current.bump();
-        engineRef.current.insert(0, 0, near.index + (near.fraction > 0.5 ? 1 : 0), click);
-        if (engineRef.current.isStale(gen)) return;
-        redraw();
-        return;
-      }
-    }
-
-    const gen = engineRef.current.bump();
-    setRouting(true);
-    setPrompt(null);
-    try {
-      const fetched = await fetchWaysAround(click, 40);
-      if (engineRef.current.isStale(gen)) return;
-      if (fetched.ok) {
-        waysCache.current = fetched.ways;
-        const decision = snapClickToOsmNetwork(click, fetched.ways, mode);
-        if (decision.kind === "prompt") {
-          setPrompt({ hit: decision.hit, nearbyCompatible: decision.nearbyCompatible });
-          pendingClick.current = click;
-          setStatus(`${decision.hit.classification.wayTypeLabel} detectada · no compatible con ${PROFILES.find((p) => p.id === mode)?.label ?? mode}`);
-          return;
-        }
-        if (decision.kind === "place") {
-          click[0] = decision.snapped[0];
-          click[1] = decision.snapped[1];
-        }
-      }
-      const last = engineRef.current.lastPoint();
-      let routed: LngLat[] | undefined;
-      if (last) {
-        const path = await routePair([last.lon, last.lat], click, gen);
-        if (engineRef.current.isStale(gen)) return;
-        routed = path ?? undefined;
-      }
-      engineRef.current.addClick(click[1], click[0], routed);
-      redraw();
-    } finally {
-      setRouting(false);
-    }
-  }, [embedNavRideApp, mode, routePair, tool]);
-
-  useEffect(() => {
-    if (!mapContainer.current || mapRef.current) return;
-    let cancelled = false;
-    import("maplibre-gl").then((ml) => {
-      if (cancelled || !mapContainer.current) return;
-      const map = new ml.default.Map({
-        container: mapContainer.current,
-        style: styleUrl(mapStyleId) as any,
-        center: [-3.7038, 40.4168],
-        zoom: 12,
-        attributionControl: { compact: true },
-      });
-      mapRef.current = map;
-      let drag: { ti: number; si: number; pi: number } | null = null;
-      map.on("load", () => {
-        ensureLayers(map);
-        syncMap();
-      });
-      map.on("style.load", () => {
-        ensureLayers(map);
-        syncMap();
-      });
-      map.on("zoom", () => {
-        zoomRef.current = map.getZoom();
-        syncMap();
-      });
-      map.on("click", (e: any) => {
-        if (drag) return;
-        const feats = map.queryRenderedFeatures(e.point, { layers: ["nr-poi"] });
-        if (feats[0]) {
-          const id = String(feats[0].properties?.id ?? "");
-          const p = poisRef.current.find((x) => x.id === id);
-          if (p) {
-            setPoiPick(p);
-            return;
+        const inspectLayers = [
+          "nr-road",
+          "nr-road-casing",
+          "nr-track",
+          "nr-path",
+          "nr-road-name",
+        ].filter((id) => !!m.getLayer(id));
+        if (inspectLayers.length > 0) {
+          const wayHits = m.queryRenderedFeatures(e.point, { layers: inspectLayers });
+          if (wayHits[0]) {
+            setWayInspector(
+              propsToWayInspector(
+                wayHits[0].properties as Record<string, unknown>,
+                wayHits[0].layer?.id,
+              ),
+            );
           }
         }
-        const w = map.queryRenderedFeatures(e.point, { layers: ["nr-wpt"] });
-        if (w[0]) {
-          const id = String(w[0].properties?.id ?? "");
-          const wp = engineRef.current.doc.waypoints.find((x) => x.id === id);
-          if (wp) setWptEdit({ id, name: wp.name, desc: wp.desc });
+
+        const { lng, lat } = e.lngLat;
+        const clickPt: LngLat = [lng, lat];
+
+        // Place map note at exact click (not mid-route default).
+        if (placeNotePendingRef.current) {
+          const msg = cueDraftMessageRef.current.trim();
+          if (!msg) {
+            setRouteError("Escribe el mensaje de la nota antes de pulsar el mapa.");
+            return;
+          }
+          const line = flattenRouteLngLats(segsRef.current);
+          const hitProj = progressMNearestOnPolyline(line, clickPt);
+          const off =
+            !hitProj || hitProj.distanceToTrackM > NOTE_OFF_TRACK_METERS;
+          const cue = createCue({
+            message: msg,
+            severity: cueDraftSeverityRef.current,
+            lat,
+            lon: lng,
+            progressM: off ? null : hitProj!.progressM,
+            noteStatus: off ? "off_track" : "on_track",
+            nearestSegmentIndex: hitProj?.segmentIndex ?? null,
+            projectionFraction: hitProj?.fraction ?? null,
+            segmentId: activeIdRef.current,
+          });
+          setCues((prev) => [...prev, cue]);
+          setCueDraftMessage("");
+          setPlaceNotePending(false);
+          placeNotePendingRef.current = false;
+          if (off) {
+            setRouteError("Nota fuera del track — se conserva lat/lon sin km de ruta.");
+          } else {
+            setRouteError(null);
+          }
           return;
         }
-        void handleClickRef.current(e.lngLat.lng, e.lngLat.lat);
-      });
-      map.on("mousedown", "nr-anchors", (e: any) => {
-        const f = e.features?.[0];
-        if (!f) return;
-        drag = { ti: Number(f.properties.ti), si: Number(f.properties.si), pi: Number(f.properties.pi) };
-        map.dragPan.disable();
-        e.preventDefault();
-      });
-      map.on("mousemove", (e: any) => {
-        if (!drag) return;
-        const pts = engineRef.current.doc.tracks[drag.ti]?.segments[drag.si]?.points;
-        if (!pts?.[drag.pi]) return;
-        pts[drag.pi] = { ...pts[drag.pi], lat: e.lngLat.lat, lon: e.lngLat.lng };
-        syncMap();
-      });
-      map.on("mouseup", async () => {
-        if (!drag) return;
-        const d = drag;
-        drag = null;
-        map.dragPan.enable();
-        const gen = engineRef.current.bump();
-        const seg = engineRef.current.doc.tracks[d.ti]?.segments[d.si];
-        if (!seg) return;
-        const p = seg.points[d.pi];
-        const dest: LngLat = [p.lon, p.lat];
+
+        const aId  = activeIdRef.current;
+        const curr = segsRef.current;
+        const activeSeg0 = curr.find(s => s.id === aId);
+        // Imported track is geometric authority — do not append routed waypoints silently.
+        if (activeSeg0?.pathKind === "track") {
+          setRouteError(
+            "GPX importado: geometría fija. Usa LÍNEA DIRECTA para editar a mano, o crea un segmento nuevo.",
+          );
+          return;
+        }
+
+        const mode = transportModeRef.current;
+        const segMode =
+          activeSeg0?.routeSegmentMode ??
+          drawModeRef.current ??
+          DEFAULT_ROUTE_SEGMENT_MODE;
+        const follow = isRoutedSegmentMode(segMode);
+        let newPt: LngLat = clickPt;
+
+        const prev =
+          activeSeg0 && activeSeg0.waypoints.length > 0
+            ? activeSeg0.waypoints[activeSeg0.waypoints.length - 1]
+            : null;
+
+        if (follow && prev) {
+          const snapped = await snapClickToRoute(
+            clickPt,
+            prev,
+            mode,
+            EDITOR_MAX_SNAP_METERS,
+            segMode,
+          );
+          if (snapped.rejectedFar) {
+            setRouteError(
+              "Este camino no está disponible en los datos de routing actuales (snap > " +
+                EDITOR_MAX_SNAP_METERS +
+                " m). Usa LÍNEA DIRECTA o elige un punto más cercano al graph.",
+            );
+            return;
+          }
+          newPt = snapped.snapped;
+        }
+
+        // Insert between selected waypoint and next (advanced)
+        let withPt: Segment[];
+        if (
+          insertModeRef.current &&
+          editorModeRef.current === "advanced" &&
+          activeWptRef.current &&
+          activeWptRef.current.segId === aId
+        ) {
+          const idx = activeWptRef.current.idx;
+          withPt = curr.map(s => {
+            if (s.id !== aId) return s;
+            const wpts = [...s.waypoints];
+            const kinds = ensureWaypointKinds(s);
+            wpts.splice(idx + 1, 0, newPt);
+            kinds.splice(idx + 1, 0, "via");
+            return { ...s, waypoints: wpts, waypointKinds: kinds };
+          });
+          setInsertMode(false);
+          insertModeRef.current = false;
+        } else {
+          withPt = curr.map(s =>
+            s.id !== aId
+              ? s
+              : {
+                  ...s,
+                  waypoints: [...s.waypoints, newPt],
+                  waypointKinds: [...ensureWaypointKinds(s), "via"],
+                  pathKind: pathKindForSegmentMode(segMode),
+                  routeSegmentMode: segMode,
+                },
+          );
+        }
+
+        segsRef.current = withPt;
+        setSegments(withPt);
+        syncMap(withPt);
+
+        const activeSeg = withPt.find(s => s.id === aId);
+        if (!activeSeg || activeSeg.waypoints.length < 2) {
+          pushHist(withPt);
+          return;
+        }
+
+        // MANUAL_STRAIGHT: waypoints ARE the geometry — no router.
+        if (!follow || activeSeg.pathKind === "freehand" || segMode === "MANUAL_STRAIGHT") {
+          const freePts = [...activeSeg.waypoints];
+          const gen = ++routeGenerationRef.current;
+          setSegments(prev => {
+            if (gen !== routeGenerationRef.current) return prev;
+            const r = prev.map(s =>
+              s.id === aId
+                ? {
+                    ...s,
+                    routePoints: freePts,
+                    routingFailed: false,
+                    absurdDetour: false,
+                    pathKind: "freehand" as const,
+                    routeSegmentMode: "MANUAL_STRAIGHT" as const,
+                  }
+                : s,
+            );
+            segsRef.current = r;
+            syncMap(r);
+            return r;
+          });
+          pushHist(segsRef.current);
+          setRouteError(null);
+          return;
+        }
+
+        const gen = ++routeGenerationRef.current;
         setRouting(true);
-        try {
-          let prevR: LngLat[] | undefined;
-          let nextR: LngLat[] | undefined;
-          const anchors = visibleAnchors(engineRef.current.doc, 22);
-          const same = anchors.filter((a) => a.trackIndex === d.ti && a.segmentIndex === d.si);
-          const idx = same.findIndex((a) => a.pointIndex === d.pi);
-          const prevA = idx > 0 ? same[idx - 1] : null;
-          const nextA = idx >= 0 && idx < same.length - 1 ? same[idx + 1] : null;
-          if (prevA) prevR = (await routePair([prevA.lon, prevA.lat], dest, gen)) ?? undefined;
-          if (engineRef.current.isStale(gen)) return;
-          if (nextA) nextR = (await routePair(dest, [nextA.lon, nextA.lat], gen)) ?? undefined;
-          if (engineRef.current.isStale(gen)) return;
-          engineRef.current.move(d.ti, d.si, d.pi, dest, prevR, nextR);
-          redraw();
-        } finally {
+        setRouteError(null);
+        const routed = await routeForMode(activeSeg.waypoints, mode, segMode);
+        if (gen !== routeGenerationRef.current) return; // latest-wins
+        if (!routed.ok) {
+          setRouteError(
+            (routed.message ?? "Sin ruta en este control point.") +
+              " No se inventa geometría. Prueba LÍNEA DIRECTA.",
+          );
+        } else if (routed.absurd && editorModeRef.current === "advanced") {
+          setRouteError(routed.message ?? "Desvío absurdo detectado.");
+        }
+        setSegments(prev => {
+          if (gen !== routeGenerationRef.current) return prev;
+          const r = prev.map(s => s.id === aId ? {
+            ...s,
+            routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
+            routingFailed: !routed.ok,
+            absurdDetour: !!routed.absurd,
+            pathKind: "routed" as const,
+            routeSegmentMode: segMode,
+          } : s);
+          segsRef.current = r;
+          const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+          cuesRef.current = reproj;
+          setCues(reproj);
+          syncMap(r);
+          return r;
+        });
+        pushHist(segsRef.current);
+        setRouting(false);
+      });
+
+      m.on("mousedown", LYR_POINTS, (e: MapLayerMouseEvent) => {
+        e.preventDefault();
+        const props = e.features?.[0]?.properties;
+        if (!props) return;
+        dragInfo = { segId: String(props.segId), ptIdx: Number(props.ptIdx) };
+        const sel = { segId: dragInfo.segId, idx: dragInfo.ptIdx };
+        setActiveWpt(sel);
+        activeWptRef.current = sel;
+        m.getCanvas().style.cursor = "grabbing";
+        m.dragPan.disable();
+      });
+
+      m.on("mousemove", (e: MapMouseEvent) => {
+        if (!dragInfo) return;
+        const { lng, lat } = e.lngLat;
+        const upd = segsRef.current.map(s => {
+          if (s.id !== dragInfo!.segId) return s;
+          const wpts = [...s.waypoints];
+          wpts[dragInfo!.ptIdx] = [lng, lat];
+          return { ...s, waypoints: wpts };
+        });
+        segsRef.current = upd;
+        setSegments(upd);
+        syncMap(upd);
+      });
+
+      m.on("mouseup", async () => {
+        if (!dragInfo) return;
+        const di = dragInfo;
+        dragInfo = null;
+        m.getCanvas().style.cursor = "";
+        m.dragPan.enable();
+
+        const seg = segsRef.current.find(s => s.id === di.segId);
+        if (!seg || seg.waypoints.length < 2) {
+          pushHist(segsRef.current);
+          return;
+        }
+
+        setRouting(true);
+        setRouteError(null);
+        const pathKind = seg.pathKind ?? "routed";
+        if (pathKind === "track") {
+          setRouteError("GPX importado: geometría de track fija — no se re-enruta al mover waypoints.");
+          pushHist(segsRef.current);
           setRouting(false);
+          return;
+        }
+        if (pathKind === "freehand") {
+          const freePts = [...seg.waypoints];
+          setSegments(prev => {
+            const r = prev.map(s =>
+              s.id === di.segId
+                ? { ...s, routePoints: freePts, routingFailed: false, absurdDetour: false }
+                : s,
+            );
+            segsRef.current = r;
+            const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+            cuesRef.current = reproj;
+            setCues(reproj);
+            syncMap(r);
+            pushHist(r);
+            return r;
+          });
+          setRouting(false);
+          return;
+        }
+        const gen = ++routeGenerationRef.current;
+        const sm = parseRouteSegmentMode(
+          seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+        );
+        const routed = await routeForMode(seg.waypoints, transportModeRef.current, sm);
+        if (gen !== routeGenerationRef.current) return;
+        if (!routed.ok) {
+          setRouteError(
+            (routed.message ?? "Punto inalcanzable — no se dibuja línea recta."),
+          );
+        } else if (routed.absurd && editorModeRef.current === "advanced") {
+          setRouteError(routed.message ?? "Desvío absurdo detectado.");
+        }
+        setSegments(prev => {
+          if (gen !== routeGenerationRef.current) return prev;
+          const r = prev.map(s => s.id === di.segId ? {
+            ...s,
+            routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
+            routingFailed: !routed.ok,
+            absurdDetour: !!routed.absurd,
+          } : s);
+          segsRef.current = r;
+          const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+          cuesRef.current = reproj;
+          setCues(reproj);
+          syncMap(r);
+          pushHist(r);
+          return r;
+        });
+        setRouting(false);
+      });
+
+      const openPointMenu = (segId: string, idx: number, clientX: number, clientY: number) => {
+        setPointMenu({ x: clientX, y: clientY, segId, idx });
+        const sel = { segId, idx };
+        setActiveWpt(sel);
+        activeWptRef.current = sel;
+        setActiveId(segId);
+        activeIdRef.current = segId;
+      };
+
+      m.on("contextmenu", (e: MapMouseEvent) => {
+        e.preventDefault();
+        const hits = m.queryRenderedFeatures(e.point, { layers: [LYR_POINTS] });
+        if (!hits[0]) return;
+        const props = hits[0].properties;
+        if (!props) return;
+        const oe = e.originalEvent as MouseEvent;
+        openPointMenu(String(props.segId), Number(props.ptIdx), oe.clientX, oe.clientY);
+      });
+
+      m.on("touchstart", LYR_POINTS, (e: MapTouchEvent & { features?: GeoJSON.Feature[] }) => {
+        const props = e.features?.[0]?.properties;
+        if (!props) return;
+        const oe = e.originalEvent as unknown as TouchEvent;
+        const touch = oe.touches?.[0];
+        if (!touch) return;
+        if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+        const segId = String(props.segId);
+        const idx = Number(props.ptIdx);
+        const x = touch.clientX;
+        const y = touch.clientY;
+        longPressTimerRef.current = setTimeout(() => {
+          openPointMenu(segId, idx, x, y);
+        }, 520);
+      });
+      m.on("touchend", LYR_POINTS, () => {
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
         }
       });
+      m.on("touchcancel", LYR_POINTS, () => {
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+      });
+      // Cancel long-press if the finger moves the map/point.
+      m.on("touchmove", () => {
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+      });
+
+      m.on("mouseenter", LYR_POINTS, () => {
+        if (!dragInfo) m.getCanvas().style.cursor = "grab";
+      });
+      m.on("mouseleave", LYR_POINTS, () => {
+        if (!dragInfo) m.getCanvas().style.cursor = "";
+      });
+  }, [
+    pushHist,
+    syncMap,
+    setActiveId,
+    setActiveWpt,
+    setCueDraftMessage,
+    setCues,
+    setInsertMode,
+    setPlaceNotePending,
+    setRouteError,
+    setRouting,
+    setSegments,
+    setSelectedCueId,
+    setPointMenu,
+    setWayInspector,
+  ]);
+
+  useGpxMap({
+    containerRef: mapContainer,
+    mapRef,
+    mapReadyRef,
+    adapterRef: mapAdapterRef,
+    styleChangingRef,
+    getSnapshot: () => ({
+      segments: segsRef.current,
+      activeWpt: activeWptRef.current,
+      cues: cuesRef.current,
+      styleId: mapStyleIdRef.current,
+      trackWidth: trackWidthRef.current,
+      trackOpacity: trackOpacityRef.current,
+      transportMode: transportModeRef.current,
+    }),
+    styleId: mapStyleId,
+    bindEvents: bindMapEvents,
+  });
+
+  // Re-route only routed segments (FOLLOW_ROAD / FOLLOW_TRAIL).
+  const rerouteAll = useCallback(async (mode: TransportMode) => {
+    const generation = ++routeGenerationRef.current;
+    setRouting(true);
+    setRouteError(null);
+    const result = await rerouteAllSegments({
+      segments: segsRef.current,
+      mode,
+      editorMode: editorModeRef.current,
+      generation,
+      isCurrent: (value) => value === routeGenerationRef.current,
     });
-    return () => { cancelled = true; };
-  }, []);
+    if (result.stale) return;
+    if (result.segments !== segsRef.current) {
+      segsRef.current = result.segments;
+      setSegments(result.segments);
+      const reproj = reprojectCuesOnTrack(
+        cuesRef.current,
+        result.segments,
+      );
+      cuesRef.current = reproj;
+      setCues(reproj);
+      syncMap(result.segments);
+      pushHist(result.segments);
+    }
+    setRouteError(result.error);
+    setRouting(false);
+  }, [pushHist, setCues, setRouteError, setRouting, setSegments, syncMap]);
 
-  const handleClickRef = useRef(handleMapClick);
-  handleClickRef.current = handleMapClick;
-  const poisRef = useRef(pois);
-  poisRef.current = pois;
+  const handleTransportChange = useCallback((mode: TransportMode) => {
+    setTransportMode(mode);
+    transportModeRef.current = mode;
+    void rerouteAll(mode);
+  }, [rerouteAll, setTransportMode]);
 
-  useEffect(() => {
-    const m = mapRef.current;
-    if (!m) return;
-    m.setStyle(styleUrl(mapStyleId) as any);
-  }, [mapStyleId]);
+  const handleSegmentModeChange = useCallback(
+    async (mode: RouteSegmentMode) => {
+      setDrawMode(mode);
+      drawModeRef.current = mode;
+      const generation = ++routeGenerationRef.current;
+      setRouting(true);
+      setRouteError(null);
+      const result = await rerouteActiveSegment({
+        segments: segsRef.current,
+        activeId: activeIdRef.current,
+        mode,
+        transportMode: transportModeRef.current,
+        editorMode: editorModeRef.current,
+        generation,
+        isCurrent: (value) => value === routeGenerationRef.current,
+      });
+      if (result.stale) return;
+      if (result.segments !== segsRef.current) {
+        segsRef.current = result.segments;
+        setSegments(result.segments);
+        const reproj = reprojectCuesOnTrack(
+          cuesRef.current,
+          result.segments,
+        );
+        cuesRef.current = reproj;
+        setCues(reproj);
+        syncMap(result.segments);
+        pushHist(result.segments);
+      }
+      setRouteError(result.error);
+      setRouting(false);
+    },
+    [
+      pushHist,
+      setCues,
+      setDrawMode,
+      setRouteError,
+      setRouting,
+      setSegments,
+      syncMap,
+    ],
+  );
 
-  useEffect(() => {
-    const m = mapRef.current;
-    if (!m) return;
-    m.easeTo({ pitch: pitch3d ? 55 : 0, duration: 400 });
-  }, [pitch3d]);
+  // ── Actions ───────────────────────────────────────────────────────────────
 
+  const handleUndo = useCallback(() => {
+    const restored = historyRef.current.undo();
+    segsRef.current = restored;
+    setSegments(restored);
+    syncMap(restored);
+    syncHistoryMeta();
+  }, [setSegments, syncHistoryMeta, syncMap]);
+
+  const handleRedo = useCallback(() => {
+    const restored = historyRef.current.redo();
+    segsRef.current = restored;
+    setSegments(restored);
+    syncMap(restored);
+    syncHistoryMeta();
+  }, [setSegments, syncHistoryMeta, syncMap]);
+
+  // Ctrl+Z / Ctrl+Y
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const meta = e.ctrlKey || e.metaKey;
-      if (meta && e.key.toLowerCase() === "z") {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.shiftKey) {
         e.preventDefault();
-        if (e.shiftKey) engineRef.current.redo();
-        else engineRef.current.undo();
-        redraw();
-      } else if (meta && e.key.toLowerCase() === "y") {
+        handleUndo();
+      } else if (key === "y" || (key === "z" && e.shiftKey)) {
         e.preventDefault();
-        engineRef.current.redo();
-        redraw();
-      } else if (e.key === "Escape") {
-        setTool("none");
-        setPanel("none");
-        setPrompt(null);
-        setAltPreview(null);
-      } else if (e.key === "Delete" || e.key === "Backspace") {
-        const a = visibleAnchors(engineRef.current.doc, 22);
-        if (a.length) {
-          const last = a[a.length - 1];
-          engineRef.current.removeAnchor(last.trackIndex, last.segmentIndex, last.pointIndex);
-          redraw();
-        }
+        handleRedo();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, [handleUndo, handleRedo]);
 
-  const applyImportedGeometry = useCallback((xml: string) => {
-    const parsed = engineRef.current.loadXml(xml);
-    capsuleRef.current = parsed.doc.capsule;
-    if (parsed.doc.capsule) engineRef.current.doc.capsule = parsed.doc.capsule;
-    setTitle(parsed.doc.name);
-    redraw();
-    const line = lngLatsOf(engineRef.current.doc);
-    if (line.length && mapRef.current) {
-      const b = line.reduce(
-        (acc, p) => ({
-          minX: Math.min(acc.minX, p[0]),
-          minY: Math.min(acc.minY, p[1]),
-          maxX: Math.max(acc.maxX, p[0]),
-          maxY: Math.max(acc.maxY, p[1]),
-        }),
-        { minX: 180, minY: 90, maxX: -180, maxY: -90 },
-      );
-      mapRef.current.fitBounds([[b.minX, b.minY], [b.maxX, b.maxY]], { padding: 60, duration: 400 });
+  const handleClear = useCallback(() => {
+    const upd = clearActiveSegment(segsRef.current, activeIdRef.current);
+    segsRef.current = upd;
+    setSegments(upd);
+    setActiveWpt(null);
+    syncMap(upd, null);
+    pushHist(upd);
+  }, [syncMap, pushHist, setSegments, setActiveWpt]);
+
+  const handleCloseLoop = useCallback(async () => {
+    const seg = segsRef.current.find(s => s.id === activeIdRef.current);
+    if (!seg || seg.waypoints.length < 3) return;
+    const closedCommand = closeLoopWaypoints(seg);
+    if (!closedCommand) return;
+    const closed = closedCommand.waypoints;
+    const closedKinds = closedCommand.kinds;
+    setRouting(true);
+    setRouteError(null);
+    const sm = parseRouteSegmentMode(
+      seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+    );
+    const routed = await routeForMode(closed, transportModeRef.current, sm);
+    if (!routed.ok) setRouteError(routed.message ?? "No se pudo cerrar el bucle.");
+    const upd = segsRef.current.map(s =>
+      s.id === activeIdRef.current
+        ? {
+            ...s,
+            waypoints: closed,
+            waypointKinds: closedKinds,
+            routePoints: routed.ok ? routed.points : [],
+            routingFailed: !routed.ok,
+            absurdDetour: !!routed.absurd,
+          }
+        : s,
+    );
+    segsRef.current = upd;
+    setSegments(upd);
+    syncMap(upd);
+    pushHist(upd);
+    setRouting(false);
+  }, [syncMap, pushHist, setSegments, setRouting, setRouteError]);
+
+  const handleAddSeg = useCallback(() => {
+    const idx = segsRef.current.length % COLORS.length;
+    const seg = mkSeg(COLORS[idx].value);
+    const upd = appendSegment(segsRef.current, seg);
+    segsRef.current = upd;
+    setSegments(upd);
+    setActiveId(seg.id);
+    activeIdRef.current = seg.id;
+    pushHist(upd);
+  }, [pushHist, setSegments, setActiveId]);
+
+  const handleDeleteSeg = useCallback((segId: string) => {
+    const upd = deleteSegment(segsRef.current, segId, () => mkSeg());
+    if (activeIdRef.current === segId) {
+      setActiveId(upd[0].id);
+      activeIdRef.current = upd[0].id;
     }
-    return parsed;
-  }, [redraw]);
+    segsRef.current = upd;
+    setSegments(upd);
+    setActiveWpt(null);
+    syncMap(upd, null);
+    pushHist(upd);
+  }, [syncMap, pushHist, setSegments, setActiveId, setActiveWpt]);
 
-  const onOpenFile = async (file: File) => {
-    const text = await file.text();
-    const parsed = parseGpxFile(text);
-    if (!parsed.recoverable) {
-      setStatus(parsed.issues[0] ?? "GPX no válido.");
+  const handleColor = useCallback((segId: string, color: string) => {
+    const upd = recolorSegment(segsRef.current, segId, color);
+    segsRef.current = upd;
+    setSegments(upd);
+    syncMap(upd);
+    pushHist(upd); // color changes enter undo stack
+  }, [syncMap, pushHist, setSegments]);
+
+  const handleRenameSeg = useCallback((segId: string, name: string) => {
+    const upd = renameSegment(segsRef.current, segId, name);
+    segsRef.current = upd;
+    setSegments(upd);
+    pushHist(upd);
+  }, [pushHist, setSegments]);
+
+  const handleDeleteWaypoint = useCallback(async (segId: string, idx: number) => {
+    const upd = removeWaypoint(segsRef.current, segId, idx);
+    segsRef.current = upd;
+    setSegments(upd);
+    setActiveWpt(null);
+    activeWptRef.current = null;
+
+    const seg = upd.find(s => s.id === segId);
+    if (seg && seg.waypoints.length >= 2) {
+      const pk = seg.pathKind ?? "routed";
+      if (pk === "track") {
+        syncMap(upd, null);
+        pushHist(upd);
+        return;
+      }
+      if (pk === "freehand") {
+        const r = upd.map(s =>
+          s.id === segId
+            ? { ...s, routePoints: [...s.waypoints], routingFailed: false }
+            : s,
+        );
+        segsRef.current = r;
+        setSegments(r);
+        syncMap(r, null);
+        pushHist(r);
+        return;
+      }
+      setRouting(true);
+      const gen = ++routeGenerationRef.current;
+      const smDel = parseRouteSegmentMode(
+        seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+      );
+      const routed = await routeForMode(seg.waypoints, transportModeRef.current, smDel);
+      if (gen !== routeGenerationRef.current) return;
+      if (!routed.ok) setRouteError(routed.message ?? "Punto inalcanzable.");
+      const r = upd.map(s => s.id === segId ? {
+        ...s,
+        routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
+        routingFailed: !routed.ok,
+        absurdDetour: !!routed.absurd,
+      } : s);
+      segsRef.current = r;
+      setSegments(r);
+      const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+      cuesRef.current = reproj;
+      setCues(reproj);
+      syncMap(r, null);
+      pushHist(r);
+      setRouting(false);
+    } else {
+      syncMap(upd, null);
+      pushHist(upd);
+    }
+  }, [syncMap, pushHist, setSegments, setActiveWpt, setCues, setRouteError, setRouting]);
+
+  const handleReorderWaypoint = useCallback(async (segId: string, idx: number, dir: -1 | 1) => {
+    const command = reorderWaypoint(segsRef.current, segId, idx, dir);
+    if (!command) return;
+    const { segments: upd, nextIndex: target } = command;
+    segsRef.current = upd;
+    setActiveWpt({ segId, idx: target });
+    activeWptRef.current = { segId, idx: target };
+
+    const seg = upd.find(s => s.id === segId)!;
+    if (seg.waypoints.length >= 2) {
+      const pk = seg.pathKind ?? "routed";
+      if (pk === "freehand") {
+        const r = upd.map(s =>
+          s.id === segId
+            ? { ...s, routePoints: [...s.waypoints], routingFailed: false }
+            : s,
+        );
+        segsRef.current = r;
+        setSegments(r);
+        syncMap(r);
+        pushHist(r);
+        return;
+      }
+      if (pk === "track") {
+        setSegments(upd);
+        syncMap(upd);
+        pushHist(upd);
+        return;
+      }
+      setRouting(true);
+      const gen = ++routeGenerationRef.current;
+      const smOrd = parseRouteSegmentMode(
+        seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
+      );
+      const routed = await routeForMode(seg.waypoints, transportModeRef.current, smOrd);
+      if (gen !== routeGenerationRef.current) return;
+      const r = upd.map(s => s.id === segId ? {
+        ...s,
+        routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
+        routingFailed: !routed.ok,
+        absurdDetour: !!routed.absurd,
+      } : s);
+      segsRef.current = r;
+      setSegments(r);
+      syncMap(r);
+      pushHist(r);
+      setRouting(false);
+    } else {
+      setSegments(upd);
+      syncMap(upd);
+      pushHist(upd);
+    }
+  }, [syncMap, pushHist, setSegments, setActiveWpt, setRouting]);
+
+  const locationDeps = useCallback(() => ({
+    embedNavRideApp,
+    map: () => mapRef.current,
+    adapter: () => mapAdapterRef.current,
+    pendingRequest: pendingLocateReqRef,
+    setLocating,
+    setError: setRouteError,
+    setLocation: setUserLngLat,
+    syncUserMarker,
+  }), [
+    embedNavRideApp,
+    setLocating,
+    setRouteError,
+    setUserLngLat,
+    syncUserMarker,
+  ]);
+
+  const handleLocate = useCallback(() => {
+    requestCurrentLocation(locationDeps());
+  }, [locationDeps]);
+
+  const applyAppCurrentLocation = useCallback(
+    (payload: Record<string, unknown> | undefined) => {
+      applyAppCurrentLocationCommand(payload, locationDeps());
+    },
+    [locationDeps],
+  );
+
+  const applyAppLocationError = useCallback(
+    (payload: Record<string, unknown> | undefined) => {
+      applyAppLocationErrorCommand(payload, locationDeps());
+    },
+    [locationDeps],
+  );
+
+  const handleFitRoute = useCallback(() => {
+    fitRouteViewport(mapAdapterRef.current, segsRef.current);
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    downloadOrSendGpx({
+      segments,
+      title: routeTitle,
+      cues,
+      capsule: capsuleRef.current,
+      embedNavRideApp,
+    });
+  }, [segments, routeTitle, cues, embedNavRideApp]);
+
+  const applyImportedResult = useCallback(
+    (imported: ImportedGeometry) => {
+      if (imported.capsule !== undefined) {
+        capsuleRef.current = imported.capsule;
+      }
+      segsRef.current = imported.segments;
+      setSegments(imported.segments);
+      setActiveId(imported.activeId);
+      activeIdRef.current = imported.activeId;
+      setDrawMode(imported.drawMode);
+      drawModeRef.current = imported.drawMode;
+      if (imported.title) setRouteTitle(imported.title);
+      setCues(imported.cues);
+      cuesRef.current = imported.cues;
+      syncMap(imported.segments);
+      pushHist(imported.segments);
+      setImportDialog(null);
+      setRouteError(null);
+    },
+    [
+      pushHist,
+      setActiveId,
+      setCues,
+      setDrawMode,
+      setImportDialog,
+      setRouteError,
+      setRouteTitle,
+      setSegments,
+      syncMap,
+    ],
+  );
+
+  const applyImportedGeometry = useCallback(
+    (
+      geometry: { lat: number; lon: number }[],
+      extensions: NavRideRoute | null,
+      asTrackOnly: boolean,
+      capsule?: RouteCapsule | null,
+    ) => {
+      const imported = rebuildImportedGeometry({
+        geometry,
+        extensions,
+        asTrackOnly,
+        capsule,
+      });
+      if (imported) applyImportedResult(imported);
+    },
+    [applyImportedResult],
+  );
+
+  const handleGpxFile = useCallback(
+    async (file: File) => {
+      try {
+        const result = await parseGpxUpload(file);
+        if (result.kind === "invalid") {
+          setRouteError(result.message);
+          setImportDialog(null);
+          return;
+        }
+        if (result.kind === "ready") {
+          applyImportedResult(result.imported);
+          return;
+        }
+        setImportDialog(result.dialog);
+      } catch {
+        setRouteError("No se pudo leer el archivo GPX.");
+      }
+    },
+    [applyImportedResult, setImportDialog, setRouteError],
+  );
+
+  // Open from Mis rutas / perfil: ?importSession=1 or ?routeId=
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (typeof window === "undefined") return;
+      const params = new URLSearchParams(window.location.search);
+      const importSession = params.get("importSession");
+      const routeId = params.get("routeId");
+
+      if (importSession === "1") {
+        try {
+          const raw = sessionStorage.getItem("navride:pending-gpx-import");
+          sessionStorage.removeItem("navride:pending-gpx-import");
+          if (!raw) return;
+          const parsed = JSON.parse(raw) as { fileName?: string; xml?: string };
+          if (!parsed.xml) return;
+          const file = new File(
+            [parsed.xml],
+            parsed.fileName || "ruta.gpx",
+            { type: "application/gpx+xml" },
+          );
+          if (!cancelled) await handleGpxFile(file);
+        } catch {
+          if (!cancelled) setRouteError("No se pudo abrir la ruta desde Mis rutas.");
+        }
+        return;
+      }
+
+      if (routeId) {
+        try {
+          const { createClient } = await import("@/lib/supabase/client");
+          const { fetchGpxViaEdge } = await import("@/lib/gpx/saveRouteToCloud");
+          const supabase = createClient();
+          const result = await fetchGpxViaEdge(supabase, routeId);
+          if (!result.ok) {
+            if (!cancelled) setRouteError(result.error);
+            return;
+          }
+          const file = new File(
+            [result.gpxXml],
+            `${result.title || "ruta"}.gpx`,
+            { type: "application/gpx+xml" },
+          );
+          if (!cancelled) {
+            setSavedRouteId(routeId);
+            await handleGpxFile(file);
+          }
+        } catch {
+          if (!cancelled) setRouteError("No se pudo cargar la ruta guardada.");
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally once on mount for deep-link open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleToggleViaShaping = useCallback(
+    (segId: string, idx: number) => {
+      const upd = toggleWaypointViaShaping(
+        segsRef.current,
+        segId,
+        idx,
+      );
+      segsRef.current = upd;
+      setSegments(upd);
+      pushHist(upd);
+    },
+    [pushHist, setSegments],
+  );
+
+  const rerouteSegmentById = useCallback(async (segId: string, base: Segment[]) => {
+    const seg = base.find((s) => s.id === segId);
+    if (!seg || seg.waypoints.length < 2) {
+      segsRef.current = base;
+      setSegments(base);
+      syncMap(base);
+      pushHist(base);
       return;
     }
-    applyImportedGeometry(text);
-    capsuleRef.current = parsed.capsule;
-  };
+    const pk = seg.pathKind ?? "routed";
+    if (pk === "track") {
+      segsRef.current = base;
+      setSegments(base);
+      syncMap(base);
+      pushHist(base);
+      return;
+    }
+    if (pk === "freehand" || seg.routeSegmentMode === "MANUAL_STRAIGHT") {
+      const r = base.map((s) =>
+        s.id === segId
+          ? { ...s, routePoints: [...s.waypoints], routingFailed: false, absurdDetour: false }
+          : s,
+      );
+      segsRef.current = r;
+      setSegments(r);
+      syncMap(r);
+      pushHist(r);
+      return;
+    }
+    setRouting(true);
+    const gen = ++routeGenerationRef.current;
+    const sm = parseRouteSegmentMode(seg.routeSegmentMode ?? "FOLLOW_ROAD");
+    const routed = await routeForMode(seg.waypoints, transportModeRef.current, sm);
+    if (gen !== routeGenerationRef.current) return;
+    const r = base.map((s) =>
+      s.id === segId
+        ? {
+            ...s,
+            routePoints: routed.ok ? routed.points : [],
+            routingFailed: !routed.ok,
+            absurdDetour: !!routed.absurd,
+          }
+        : s,
+    );
+    segsRef.current = r;
+    setSegments(r);
+    const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+    cuesRef.current = reproj;
+    setCues(reproj);
+    syncMap(r);
+    pushHist(r);
+    setRouting(false);
+    if (!routed.ok) setRouteError(routed.message ?? "No se pudo recalcular el tramo.");
+  }, [pushHist, setCues, setRouteError, setRouting, setSegments, syncMap]);
 
-  const persistRoute = useCallback(async () => {
-    const gpx = exportGpx(engineRef.current.doc, capsuleRef.current);
-    const res = await fetch("/api/gpx/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        title,
-        gpxXml: gpx,
-        waypointsCount: allPoints(engineRef.current.doc).length,
-        distanceM: stats.distanceM,
-        existingRouteId: savedRouteId,
-      }),
+  const handleSplitAtActive = useCallback(async () => {
+    const sel = activeWptRef.current;
+    if (!sel) {
+      setRouteError("Selecciona un punto intermedio para dividir.");
+      return;
+    }
+    const next = splitSegmentAt(segsRef.current, sel.segId, sel.idx);
+    if (!next) {
+      setRouteError("No se puede dividir en ese punto.");
+      return;
+    }
+    segsRef.current = next;
+    setSegments(next);
+    setActiveId(next[0].id);
+    activeIdRef.current = next[0].id;
+    for (const seg of next) {
+      await rerouteSegmentById(seg.id, segsRef.current);
+    }
+  }, [rerouteSegmentById, setActiveId, setRouteError, setSegments]);
+
+  const handleJoinNext = useCallback(async () => {
+    const next = joinWithNextSegment(segsRef.current, activeIdRef.current);
+    if (!next) {
+      setRouteError("No hay segmento siguiente para unir.");
+      return;
+    }
+    const mergedId = next.find((s) => s.id === activeIdRef.current)?.id ?? next[0].id;
+    segsRef.current = next;
+    setSegments(next);
+    await rerouteSegmentById(mergedId, next);
+  }, [rerouteSegmentById, setRouteError, setSegments]);
+
+  const handleReverse = useCallback(async () => {
+    const next = reverseRoute(segsRef.current);
+    segsRef.current = next;
+    setSegments(next);
+    setActiveId(next[0]?.id ?? activeIdRef.current);
+    activeIdRef.current = next[0]?.id ?? activeIdRef.current;
+    for (const seg of next) {
+      await rerouteSegmentById(seg.id, segsRef.current);
+    }
+  }, [rerouteSegmentById, setActiveId, setSegments]);
+
+  const handlePointMenuAction = useCallback(
+    async (action: PointMenuAction) => {
+      if (!pointMenu) return;
+      const { segId, idx } = pointMenu;
+      setPointMenu(null);
+      if (action === "delete") {
+        await handleDeleteWaypoint(segId, idx);
+        return;
+      }
+      if (action === "insertAfter") {
+        setInsertMode(true);
+        insertModeRef.current = true;
+        setActiveWpt({ segId, idx });
+        activeWptRef.current = { segId, idx };
+        setRouteError("Toca el mapa para insertar el punto después del seleccionado.");
+        return;
+      }
+      if (action === "toggleShaping") {
+        handleToggleViaShaping(segId, idx);
+        return;
+      }
+      if (action === "splitHere") {
+        const next = splitSegmentAt(segsRef.current, segId, idx);
+        if (!next) {
+          setRouteError("No se puede dividir en ese punto.");
+          return;
+        }
+        segsRef.current = next;
+        setSegments(next);
+        for (const seg of next) {
+          await rerouteSegmentById(seg.id, segsRef.current);
+        }
+      }
+    },
+    [
+      handleDeleteWaypoint,
+      handleToggleViaShaping,
+      pointMenu,
+      rerouteSegmentById,
+      setInsertMode,
+      setActiveWpt,
+      setRouteError,
+      setSegments,
+    ],
+  );
+
+  const handleImportChoice = useCallback(
+    async (choice: ImportChoice) => {
+      if (!importDialog) return;
+      const { geometry, extensions, capsule } = importDialog;
+      setImportDialog(null);
+
+      if (choice === "track") {
+        applyImportedGeometry(geometry, extensions, true, capsule);
+        originalImportRef.current = null;
+        return;
+      }
+
+      if (choice === "keep-original" || choice === "edit") {
+        if (choice === "keep-original") {
+          const trackCopy = rebuildImportedGeometry({
+            geometry,
+            extensions,
+            asTrackOnly: true,
+            capsule,
+          });
+          originalImportRef.current = trackCopy?.segments
+            ? JSON.parse(JSON.stringify(trackCopy.segments))
+            : null;
+        } else {
+          originalImportRef.current = null;
+        }
+        applyImportedGeometry(geometry, extensions, false, capsule);
+        return;
+      }
+
+      const trackCopy = rebuildImportedGeometry({
+        geometry,
+        extensions,
+        asTrackOnly: true,
+        capsule,
+      });
+      if (trackCopy?.segments) {
+        originalImportRef.current = JSON.parse(JSON.stringify(trackCopy.segments));
+      }
+      applyImportedGeometry(geometry, extensions, false, capsule);
+      const mode = choice === "snap-trail" ? "FOLLOW_TRAIL" : "FOLLOW_ROAD";
+      setDrawMode(mode);
+      drawModeRef.current = mode;
+      await handleSegmentModeChange(mode);
+      setRouteError(
+        choice === "snap-trail"
+          ? "Copia ajustada a pistas/senderos. Original conservado en memoria de sesión."
+          : "Copia ajustada a carreteras. Original conservado en memoria de sesión.",
+      );
+    },
+    [
+      applyImportedGeometry,
+      handleSegmentModeChange,
+      importDialog,
+      setDrawMode,
+      setImportDialog,
+      setRouteError,
+    ],
+  );
+
+
+  const handleAddCue = useCallback(() => {
+    const result = cuePlacementMessage(cueDraftMessage);
+    if (!result.ok) return;
+    setPlaceNotePending(true);
+    placeNotePendingRef.current = true;
+    setRouteError(result.error);
+  }, [cueDraftMessage, setPlaceNotePending, setRouteError]);
+
+  const handleDeleteCue = useCallback(
+    (cueId: string) => {
+      setCues((previous) => deleteCue(previous, cueId));
+      setSelectedCueId((current) =>
+        current === cueId ? null : current,
+      );
+    },
+    [setCues, setSelectedCueId],
+  );
+
+  const handleUpdateCueSeverity = useCallback(
+    (cueId: string, severity: NavRideCueSeverity) => {
+      setCues((previous) =>
+        updateCueSeverity(previous, cueId, severity),
+      );
+    },
+    [setCues],
+  );
+
+  const routeSignature = useCallback(
+    () => computeRouteSignature(segments, routeTitle),
+    [segments, routeTitle],
+  );
+
+  const persistRoute = useCallback(async (): Promise<string | null> => {
+    const result = await persistRouteToCloud({
+      segments,
+      title: routeTitle,
+      cues,
+      capsule: capsuleRef.current,
+      savedRouteId,
     });
-    const result = (await res.json()) as { ok: true; routeId: string } | { ok: false; error: string };
     if (!result.ok) {
       setUploadMsg({ ok: false, text: result.error });
       return null;
     }
+
     setSavedRouteId(result.routeId);
+    setSavedSignature(result.signature);
+    clearDraft();
+    setDraftBanner(null);
     return result.routeId;
-  }, [doc, savedRouteId, stats.distanceM, title]);
+  }, [
+    cues,
+    routeTitle,
+    savedRouteId,
+    segments,
+    setDraftBanner,
+    setSavedRouteId,
+    setSavedSignature,
+    setUploadMsg,
+  ]);
 
-  const persistToApp = useCallback((alsoOpen: boolean) => {
-    const gpx = exportGpx(engineRef.current.doc, capsuleRef.current);
-    const routeJson = buildRouteJson(engineRef.current.doc, title, savedRouteId);
-    postToNavRideApp(alsoOpen ? "OPEN_IN_NAVRIDE" : "SAVE_ROUTE", {
-      gpxXml: gpx,
-      route: routeJson as unknown as Record<string, unknown>,
-      name: title,
-      routeId: savedRouteId,
-      distanceM: stats.distanceM,
-      waypointsCount: allPoints(engineRef.current.doc).length,
-    });
-  }, [doc, savedRouteId, stats.distanceM, title]);
+  const persistToApp = useCallback(
+    (alsoOpen: boolean) => {
+      const result = persistRouteToApp({
+        alsoOpen,
+        segments,
+        title: routeTitle,
+        cues,
+        capsule: capsuleRef.current,
+        savedRouteId,
+      });
+      if (!result.ok) {
+        setUploadMsg({ ok: false, text: result.message });
+        return;
+      }
+      setSavedSignature(result.signature);
+      clearDraft();
+      setDraftBanner(null);
+      setUploadMsg({ ok: true, text: result.message });
+    },
+    [
+      cues,
+      routeTitle,
+      savedRouteId,
+      segments,
+      setDraftBanner,
+      setSavedSignature,
+      setUploadMsg,
+    ],
+  );
 
-  const handleSave = async () => {
-    if (saving) return;
-    setSaving(true);
-    setUploadMsg(null);
+  const handleSave = useCallback(async () => {
+    if (saving || uploading) return;
     if (embedNavRideApp) {
+      setSaving(true);
+      setUploadMsg(null);
       persistToApp(false);
       setSaving(false);
       return;
     }
+    setSaving(true);
+    setUploadMsg(null);
     const id = await persistRoute();
-    if (id) setUploadMsg({ ok: true, text: "Ruta guardada. Visible en NavRide → GPX Web." });
+    if (id) {
+      const isUpdate = savedRouteId != null && savedRouteId === id;
+      setUploadMsg({
+        ok: true,
+        text: isUpdate
+          ? "Ruta actualizada en la web. Visible al instante en NavRide → menú GPX Web."
+          : "Ruta guardada en la web. Visible al instante en NavRide → menú GPX Web.",
+      });
+    }
     setSaving(false);
-  };
+  }, [persistRoute, saving, uploading, savedRouteId, embedNavRideApp, persistToApp, setSaving, setUploadMsg]);
 
-  useEffect(() => {
-    if (!embedNavRideApp) return;
-    window.__navrideEmbedReady = true;
-    postToNavRideApp("READY", {
-      capabilities: { save: true, exportGpx: true, openInNavRide: true, importGpx: true, cloudSaveViaApp: true },
-    });
-    const unreg = registerAppToEditorHandler((msg: NavRideEditorBridgeMessage) => {
-      if (msg.type === "LOAD_ROUTE") {
-        const gpxXml = typeof msg.payload?.gpxXml === "string" ? msg.payload.gpxXml : "";
-        if (!gpxXml) return;
-        const parsed = parseGpxFile(gpxXml);
-        if (!parsed.recoverable) {
-          setStatus(parsed.issues[0] ?? "GPX no válido.");
-          return;
-        }
-        applyImportedGeometry(gpxXml);
-        if (parsed.capsule) capsuleRef.current = parsed.capsule;
-        if (typeof msg.payload?.routeId === "string") setSavedRouteId(msg.payload.routeId);
-      }
-      if (msg.type === "CURRENT_LOCATION") {
-        const lat = Number(msg.payload?.lat);
-        const lon = Number(msg.payload?.lon);
-        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-        mapRef.current?.easeTo({ center: [lon, lat], zoom: 14 });
-        const src = mapRef.current?.getSource(SRC_USER);
-        if (src) src.setData({ type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [lon, lat] } }] });
-      }
-    });
-    return () => unreg();
-  }, [applyImportedGeometry, embedNavRideApp]);
+  const handleLaunch = useCallback(async () => {
+    if (saving || uploading) return;
+    setUploading(true);
+    setUploadMsg(null);
 
-  useEffect(() => {
-    postToNavRideApp("DIRTY_STATE_CHANGED", { dirty: doc.dirty });
-  }, [doc.dirty]);
-
-  useEffect(() => {
-    if (!poiOn || poiCats.length === 0) {
-      setPois([]);
-      return;
-    }
-    const m = mapRef.current;
-    if (!m) return;
-    const b = m.getBounds();
-    const gen = poiStore.current.bump();
-    fetchPoisBbox(poiCats, b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), gen, poiStore.current)
-      .then((r) => {
-        if (poiStore.current.isStale(r.generation)) return;
-        setPois(r.pois);
-      })
-      .catch(() => setStatus("Puntos de interés: tiempo de espera agotado."));
-  }, [poiOn, poiCats, mapStyleId]);
-
-  const runDoctor = async () => {
-    const line = lngLatsOf(engineRef.current.doc);
-    if (line.length < 2) return;
-    const fetched = await fetchWaysAlongRoute(line);
-    if (!fetched.ok) {
-      setStatus("Route Doctor: Overpass no disponible.");
-      return;
-    }
-    const a = auditRouteGeometry(line, fetched.ways, mode);
-    setAudit(a);
-    setPanel("tools");
-  };
-
-  const flyIssue = (issue: CompatibilityIssue) => {
-    setSelectedIssue(issue);
-    mapRef.current?.flyTo({ center: issue.midpoint, zoom: 16, duration: 600 });
-  };
-
-  const findAlt = async () => {
-    if (!prompt) return;
-    setFindingAlt(true);
-    const last = engineRef.current.lastPoint();
-    const click = pendingClick.current;
-    if (!last || !click) {
-      setFindingAlt(false);
-      return;
-    }
-    const fetched = await fetchWaysAround(click, 120);
-    const preferred = compatibleWaysOnly(fetched.ways, mode);
-    const path = routeOnOsmNetwork(preferred.length ? preferred : fetched.ways, [last.lon, last.lat], click, mode);
-    setAltPreview(path);
-    setFindingAlt(false);
-  };
-
-  const acceptAlt = () => {
-    if (!altPreview || altPreview.length < 2) return;
-    const last = altPreview[altPreview.length - 1];
-    engineRef.current.addClick(last[1], last[0], altPreview);
-    setAltPreview(null);
-    setPrompt(null);
-    redraw();
-  };
-
-  const locate = () => {
     if (embedNavRideApp) {
-      postToNavRideApp("REQUEST_CURRENT_LOCATION", {}, newBridgeRequestId());
+      persistToApp(true);
+      setUploading(false);
       return;
     }
-    navigator.geolocation?.getCurrentPosition((pos) => {
-      mapRef.current?.easeTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 14 });
-    });
-  };
 
-  const doSearch = async () => {
-    const q = search.trim();
-    if (!q) return;
-    const coord = q.match(/^\s*(-?\d+\.?\d*)\s*[, ]\s*(-?\d+\.?\d*)\s*$/);
-    if (coord) {
-      const lat = Number(coord[1]);
-      const lon = Number(coord[2]);
-      if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
-        mapRef.current?.easeTo({ center: [lon, lat], zoom: 14 });
+    try {
+      let routeId = savedRouteId;
+      const sig = routeSignature();
+      if (!routeId || savedSignature !== sig) {
+        routeId = await persistRoute();
+      }
+      if (!routeId) {
+        setUploading(false);
         return;
       }
-    }
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
-        { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) },
-      );
-      const json = (await res.json()) as { lon: string; lat: string }[];
-      if (json[0]) mapRef.current?.easeTo({ center: [Number(json[0].lon), Number(json[0].lat)], zoom: 13 });
-    } catch {
-      setStatus("Búsqueda no disponible.");
-    }
-  };
 
-  const barBtn = "h-9 px-2.5 rounded-lg text-xs font-medium bg-black/55 hover:bg-black/75 border border-white/10 backdrop-blur-md";
-  const sheet = embedNavRideApp
-    ? "absolute left-2 right-2 bottom-3 rounded-2xl bg-[#121214]/95 border border-white/10 p-3 max-h-[46vh] overflow-auto"
-    : "absolute top-16 right-3 w-72 rounded-xl bg-[#121214]/95 border border-white/10 p-3 max-h-[70vh] overflow-auto";
+      const links = buildRouteDeepLinks(routeId);
+      const opened = tryOpenNavRideApp(routeId);
+      const copied = await copyRouteLink(routeId);
 
+      setUploadMsg({
+        ok: true,
+        text: opened
+          ? "Ruta guardada. Abriendo NavRide… (misma cuenta Supabase en la app)."
+          : copied
+            ? `Ruta guardada. Enlace copiado. Ábrelo en el móvil con NavRide instalada: ${links.https}`
+            : `Ruta guardada. Abre en el móvil: ${links.https}`,
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Error desconocido";
+      setUploadMsg({ ok: false, text: `Error inesperado: ${msg}` });
+    }
+    setUploading(false);
+  }, [persistRoute, routeSignature, savedRouteId, savedSignature, saving, uploading, embedNavRideApp, persistToApp, setUploading, setUploadMsg]);
+
+  // ── App embed bridge ──────────────────────────────────────────────────────
+  useNavRideAppBridge({
+    enabled: embedNavRideApp,
+    segments,
+    routeTitle,
+    cues,
+    savedSignature,
+    pendingLocationRequest: pendingLocateReqRef,
+    applyImportedGeometry,
+    applyCurrentLocation: applyAppCurrentLocation,
+    applyLocationError: applyAppLocationError,
+    setRouteError,
+    setSavedRouteId,
+    setSavedSignature,
+    setUploadMsg,
+  });
+
+  // ── Derived ───────────────────────────────────────────────────────────────
+
+  const totalWpts     = segments.reduce((a, s) => a + s.waypoints.length, 0);
+  const totalRoutePts = segments.reduce(
+    (a, s) => a + (s.routingFailed ? 0 : s.routePoints.length),
+    0,
+  );
+  const activeSeg     = segments.find(s => s.id === activeId) ?? segments[0];
+  const advanced = editorMode === "advanced";
+  const routeAnalysis = useMemo(
+    () => analyzeRouteMetrics(segments, transportMode),
+    [segments, transportMode],
+  );
+  const routeHealth = useMemo(
+    () =>
+      analyzeRouteHealth(
+        segments.map((s) => ({
+          waypoints: s.waypoints,
+          routePoints: s.routingFailed ? [] : s.routePoints,
+          mode: transportMode,
+          routingFailed: s.routingFailed,
+        })),
+      ),
+    [segments, transportMode],
+  );
+  const modeLabel =
+    transportMode === "walk"
+      ? "Caminar"
+      : transportMode === "bike"
+        ? "Bici"
+        : transportMode === "car"
+          ? "Coche"
+          : "Moto";
+  const menuSeg = pointMenu
+    ? segments.find((s) => s.id === pointMenu.segId)
+    : null;
+  const menuKind =
+    menuSeg && pointMenu
+      ? (menuSeg.waypointKinds?.[pointMenu.idx] ?? "via")
+      : "via";
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div
-      className="relative w-full h-full min-h-[100dvh] overflow-hidden bg-[#050608]"
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => {
-        e.preventDefault();
-        const f = e.dataTransfer.files[0];
-        if (f) void onOpenFile(f);
-      }}
-    >
-      <div ref={mapContainer} className="absolute inset-0" />
+    <div className="relative flex-1 h-full overflow-hidden">
+      <div className="absolute inset-0">
+        <div ref={mapContainer} className="w-full h-full" />
 
-      <div className={`absolute ${embedNavRideApp ? "top-2 left-2 right-2" : "top-3 left-1/2 -translate-x-1/2"} z-10 flex flex-wrap items-center justify-center gap-1`}>
-        <button type="button" className={barBtn} onClick={() => { engineRef.current.reset(title); capsuleRef.current = null; redraw(); }}><Plus size={14} /> Nueva</button>
-        <button type="button" className={barBtn} onClick={() => fileRef.current?.click()}><Upload size={14} /> Abrir</button>
-        <button type="button" className={barBtn} onClick={() => void handleSave()}>Guardar</button>
-        <button type="button" className={barBtn} disabled={!canUndo} onClick={() => { engineRef.current.undo(); redraw(); }}><Undo2 size={14} /></button>
-        <button type="button" className={barBtn} disabled={!canRedo} onClick={() => { engineRef.current.redo(); redraw(); }}><Redo2 size={14} /></button>
-        <button type="button" className={`${barBtn} ${panel === "tools" ? "bg-orange-600" : ""}`} onClick={() => setPanel(panel === "tools" ? "none" : "tools")}><Wrench size={14} /> Herramientas</button>
-        <button type="button" className={`${barBtn} ${panel === "layers" ? "bg-orange-600" : ""}`} onClick={() => setPanel(panel === "layers" ? "none" : "layers")}><Layers size={14} /> Capas</button>
-        {PROFILES.map((p) => (
-          <button key={p.id} type="button" className={`${barBtn} ${mode === p.id ? "bg-orange-600 text-white" : ""}`} onClick={() => setMode(p.id)}>
-            {p.icon} {p.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="absolute top-14 left-3 z-10 flex gap-1">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void doSearch()}
-          placeholder="Localidad, dirección, GPS"
-          className="h-9 w-52 rounded-lg bg-black/55 border border-white/10 px-2 text-xs"
+        <GpxFloatingToolbar
+          embedNavRideApp={embedNavRideApp}
+          canClear={!!activeSeg && activeSeg.waypoints.length > 0}
+          canUndo={histIdx > 0}
+          canRedo={histIdx < histLen - 1}
+          styleMenuOpen={styleMenuOpen}
+          mapStyleId={mapStyleId}
+          styles={MAP_STYLES.map(({ id, label }) => ({ id, label }))}
+          onClear={handleClear}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onToggleStyleMenu={() => setStyleMenuOpen((value) => !value)}
+          onChangeStyle={(style) => {
+            setMapStyleId(style);
+            setStyleMenuOpen(false);
+          }}
         />
-        <button type="button" className={barBtn} onClick={() => void doSearch()}><Search size={14} /></button>
-        <button type="button" className={barBtn} onClick={locate}><Crosshair size={14} /> Mi ubicación</button>
-      </div>
 
-      <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml,text/xml" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void onOpenFile(f); }} />
+        <GpxNavTools
+          locating={locating}
+          canFit={totalWpts >= 2}
+          showExit={!embedNavRideApp}
+          onLocate={handleLocate}
+          onFit={handleFitRoute}
+          onResetNorth={() => {
+            mapRef.current?.easeTo({ bearing: 0, pitch: 0, duration: 400 });
+          }}
+          onExit={() => router.push("/")}
+        />
 
-      {routing && (
-        <div className="absolute top-14 right-3 z-10 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-[11px] text-white/80">
-          <Loader2 size={12} className="animate-spin" /> Calculando…
-        </div>
-      )}
-
-      {panel === "tools" && (
-        <div className={sheet}>
-          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Herramientas</p>
-          <div className="grid grid-cols-2 gap-1.5 text-xs">
-            <button className={barBtn} onClick={() => setTrace(trace === "FOLLOW_WAYS" ? "STRAIGHT" : "FOLLOW_WAYS")}>
-              {trace === "FOLLOW_WAYS" ? "Seguir vías" : "Línea directa"}
-            </button>
-            <button className={barBtn} onClick={() => { engineRef.current.reverse(); redraw(); }}>Invertir</button>
-            <button className={barBtn} onClick={() => { engineRef.current.roundTrip(); redraw(); }}>Ida y vuelta</button>
-            <button className={barBtn} onClick={async () => {
-              const last = engineRef.current.lastPoint();
-              const first = engineRef.current.firstPoint();
-              if (!last || !first) return;
-              const gen = engineRef.current.bump();
-              const path = await routePair([last.lon, last.lat], [first.lon, first.lat], gen);
-              if (!path || engineRef.current.isStale(gen)) return;
-              engineRef.current.backToStart(path);
-              redraw();
-            }}>Volver al inicio</button>
-            <button className={barBtn} onClick={async () => {
-              const last = engineRef.current.lastPoint();
-              const first = engineRef.current.firstPoint();
-              if (!last || !first) return;
-              const gen = engineRef.current.bump();
-              const path = await routePair([last.lon, last.lat], [first.lon, first.lat], gen);
-              if (!path || engineRef.current.isStale(gen)) return;
-              engineRef.current.closeLoop(path);
-              redraw();
-            }}>Cerrar circuito</button>
-            <button className={barBtn} onClick={() => {
-              const line = lngLatsOf(engineRef.current.doc);
-              const near = nearestOnPolyline(line[0] ?? [0, 0], line);
-              if (near) engineRef.current.startLoopHere(near.index);
-              redraw();
-            }}>Empezar aquí</button>
-            <button className={barBtn} onClick={() => setTool(tool === "crop" ? "none" : "crop")}>Recortar</button>
-            <button className={barBtn} onClick={() => setTool(tool === "split" ? "none" : "split")}>Dividir aquí</button>
-            <button className={barBtn} onClick={() => { engineRef.current.merge("connect"); redraw(); }}>Conectar</button>
-            <button className={barBtn} onClick={() => { engineRef.current.merge("group"); redraw(); }}>Agrupar</button>
-            <button className={barBtn} onClick={() => setTool(tool === "waypoint" ? "none" : "waypoint")}>Waypoint</button>
-            <button className={barBtn} onClick={() => setTool(tool === "select" ? "none" : "select")}>Selección</button>
-            <button className={barBtn} onClick={() => void runDoctor()}>Route Doctor</button>
-            <button className={barBtn} onClick={() => setPanel("poi")}>Puntos de interés</button>
+        {routing && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#0a0a0a]/90 border border-white/15 rounded-full px-4 py-2 text-xs text-white/70 z-10 whitespace-nowrap shadow-lg">
+            <Loader2 size={13} className="animate-spin text-[#f97316]" />
+            Calculando snap-to-road…
           </div>
-          <div className="mt-3">
-            <p className="text-[11px] text-white/50">Reducir puntos · {simEst.before.toLocaleString("es")} → {simEst.after.toLocaleString("es")}</p>
-            <input type="range" min={2} max={80} value={simplify} onChange={(e) => setSimplify(Number(e.target.value))} className="w-full" />
-            <div className="flex justify-between text-[10px] text-white/35"><span>Más detalle</span><span>Menos detalle</span></div>
-            <button className={`${barBtn} mt-1 w-full`} onClick={() => { engineRef.current.simplify(simplify); redraw(); }}>Aplicar simplificar</button>
+        )}
+
+        {routeError && (
+          <div className="absolute top-14 left-1/2 z-10 max-w-[min(420px,calc(100vw-24px))] -translate-x-1/2 rounded-xl border border-white/15 bg-[#0a0a0a]/92 px-3 py-2 text-[11px] text-white/75 shadow-lg">
+            {routeError}
           </div>
-          {tool === "crop" && (
-            <div className="mt-3 text-xs">
-              <p>Inicio / final (m)</p>
-              <input type="range" min={0} max={stats.distanceM} value={crop?.[0] ?? 0} onChange={(e) => setCrop([Number(e.target.value), crop?.[1] ?? stats.distanceM])} className="w-full" />
-              <input type="range" min={0} max={stats.distanceM} value={crop?.[1] ?? stats.distanceM} onChange={(e) => setCrop([crop?.[0] ?? 0, Number(e.target.value)])} className="w-full" />
-              <p className="text-white/50">{((crop ? crop[1] - crop[0] : stats.distanceM) / 1000).toFixed(2)} km</p>
-              <button className={`${barBtn} w-full mt-1`} onClick={() => {
-                if (!crop) return;
-                const line = lngLatsOf(engineRef.current.doc);
-                const a = nearestOnPolyline(pointAtDistanceM(line, crop[0]) ?? line[0], line);
-                const b = nearestOnPolyline(pointAtDistanceM(line, crop[1]) ?? line[line.length - 1], line);
-                if (a && b) engineRef.current.crop(a.index, b.index);
-                setTool("none");
-                setCrop(null);
-                redraw();
-              }}>Confirmar recorte</button>
-            </div>
-          )}
-          {audit && (
-            <div className="mt-3">
-              <RouteCompatibilityReview
-                audit={audit}
-                loading={false}
-                selected={selectedIssue}
-                onReview={() => void runDoctor()}
-                onSelectIssue={(issue) => flyIssue(issue)}
-                onKeep={() => setSelectedIssue(null)}
-                onFindAlt={() => void findAlt()}
-                onEdit={() => setTool("none")}
-                onBack={() => setSelectedIssue(null)}
-              />
-            </div>
-          )}
-        </div>
-      )}
+        )}
 
-      {panel === "layers" && (
-        <div className={sheet}>
-          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Mapa</p>
-          {MAP_STYLES.map((s) => (
-            <button key={s.id} type="button" className={`${barBtn} w-full mb-1 ${mapStyleId === s.id ? "bg-orange-600" : ""}`} onClick={() => setMapStyleId(s.id)}>
-              {s.label}
-            </button>
-          ))}
-          <button className={`${barBtn} w-full mt-2`} onClick={() => setPitch3d((v) => !v)}>{pitch3d ? "3D" : "2D"}</button>
-          <button className={`${barBtn} w-full mt-1`} onClick={() => setShowArrows((v) => !v)}>Flechas de dirección {showArrows ? "ON" : "OFF"}</button>
-          <button className={`${barBtn} w-full mt-1`} onClick={() => setShowMarks((v) => !v)}>Marcadores de distancia {showMarks ? "ON" : "OFF"}</button>
-          {multi && (
-            <button className={`${barBtn} w-full mt-2`} onClick={() => setPanel("tracks")}>Trazas ({doc.tracks.length})</button>
-          )}
-        </div>
-      )}
+        {wayInspector && (
+          <GpxWayInspector data={wayInspector} onClose={() => setWayInspector(null)} />
+        )}
 
-      {panel === "poi" && (
-        <div className={sheet}>
-          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Puntos de interés</p>
-          <button className={`${barBtn} w-full mb-2`} onClick={() => {
-            const next = !poiOn;
-            setPoiOn(next);
-            if (next && poiCats.length === 0) setPoiCats(POI_MODE_DEFAULTS[mode] ?? []);
-          }}>{poiOn ? "POI ON" : "POI apagados"}</button>
-          {POI_CATEGORIES.map((c) => (
-            <label key={c.id} className="flex items-center gap-2 text-xs py-1">
-              <input
-                type="checkbox"
-                checked={poiCats.includes(c.id)}
-                onChange={() => {
-                  setPoiCats((cur) => cur.includes(c.id) ? cur.filter((x) => x !== c.id) : [...cur, c.id]);
-                  setPoiOn(true);
-                }}
-              />
-              {c.label}
-            </label>
-          ))}
-        </div>
-      )}
-
-      {panel === "tracks" && multi && (
-        <div className={sheet}>
-          {doc.tracks.map((t, i) => (
-            <div key={t.id} className="flex items-center gap-2 text-xs py-1">
-              <input type="checkbox" checked={!t.hidden} onChange={() => { engineRef.current.hideTrack(i, !t.hidden); redraw(); }} />
-              <input className="bg-transparent flex-1 border-b border-white/10" value={t.name} onChange={(e) => { engineRef.current.rename(i, e.target.value); redraw(); }} />
-              <button onClick={() => { engineRef.current.duplicate(i); redraw(); }}>Dup</button>
-              <button onClick={() => { engineRef.current.dropTrack(i); redraw(); }}>✕</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {prompt && (
-        <div className="absolute bottom-28 left-3 z-20 w-72">
-          <CompatibilityPromptCard
-            prompt={prompt}
-            mode={mode}
-            findingAlt={findingAlt}
-            onViewMap={() => mapRef.current?.flyTo({ center: prompt.hit.snapped, zoom: 16 })}
-            onFindAlt={() => void findAlt()}
-            onCancel={() => { setPrompt(null); pendingClick.current = null; }}
+        {showAnalysis && (
+          <GpxRouteAnalysisPanel
+            analysis={routeAnalysis}
+            health={routeHealth}
+            modeLabel={modeLabel}
+            pointCount={totalWpts}
+            onClose={() => setShowAnalysis(false)}
           />
-        </div>
-      )}
-      {altPreview && (
-        <div className="absolute bottom-28 left-80 z-20 w-64">
-          <CompatibilityAltPreview
-            onAccept={acceptAlt}
-            onDismiss={() => setAltPreview(null)}
+        )}
+
+        {showAlternatives && activeSeg && (
+          <GpxAlternativesPanel
+            waypoints={activeSeg.waypoints}
+            transportMode={transportMode}
+            onClose={() => setShowAlternatives(false)}
+            onApply={(mode, points) => {
+              const pathKind = (
+                mode === "MANUAL_STRAIGHT" ? "freehand" : "routed"
+              ) as Segment["pathKind"];
+              const upd: Segment[] = segsRef.current.map((s) =>
+                s.id === activeIdRef.current
+                  ? {
+                      ...s,
+                      routePoints: points,
+                      routeSegmentMode: mode,
+                      pathKind,
+                      routingFailed: false,
+                    }
+                  : s,
+              );
+              segsRef.current = upd;
+              setSegments(upd);
+              setDrawMode(mode);
+              drawModeRef.current = mode;
+              syncMap(upd);
+              pushHist(upd);
+              setShowAlternatives(false);
+            }}
           />
-        </div>
-      )}
-
-      {poiPick && (
-        <div className="absolute bottom-28 right-3 z-20 w-64 rounded-xl bg-[#121214] border border-white/10 p-3 text-xs">
-          <p className="font-semibold">{poiPick.name ?? poiPick.category}</p>
-          <p className="text-white/50">{poiPick.category}</p>
-          <div className="mt-2 grid gap-1">
-            <button className={barBtn} onClick={() => { engineRef.current.addClick(poiPick.lat, poiPick.lon); setPoiPick(null); redraw(); }}>Añadir a ruta</button>
-            <button className={barBtn} onClick={() => { engineRef.current.addWpt(poiPick.lat, poiPick.lon, poiPick.name ?? poiPick.category); setPoiPick(null); redraw(); }}>Añadir como waypoint</button>
-            <button className={barBtn} onClick={() => setPoiPick(null)}>Cerrar</button>
-          </div>
-        </div>
-      )}
-
-      {wptEdit && (
-        <div className="absolute bottom-28 right-3 z-20 w-64 rounded-xl bg-[#121214] border border-white/10 p-3 text-xs">
-          <input className="w-full bg-black/40 rounded px-2 py-1 mb-1" value={wptEdit.name} onChange={(e) => setWptEdit({ ...wptEdit, name: e.target.value })} />
-          <textarea className="w-full bg-black/40 rounded px-2 py-1 h-16" value={wptEdit.desc} onChange={(e) => setWptEdit({ ...wptEdit, desc: e.target.value })} />
-          <div className="flex gap-1 mt-1">
-            <button className={barBtn} onClick={() => { engineRef.current.patchWpt(wptEdit.id, { name: wptEdit.name, desc: wptEdit.desc }); setWptEdit(null); redraw(); }}>OK</button>
-            <button className={barBtn} onClick={() => { engineRef.current.deleteWpt(wptEdit.id); setWptEdit(null); redraw(); }}>Borrar</button>
-          </div>
-        </div>
-      )}
-
-      <div className={`absolute ${embedNavRideApp ? "bottom-[4.5rem]" : "bottom-2"} left-3 right-3 z-10`}>
-        <button type="button" className="mb-1 text-[10px] text-white/50" onClick={() => setProfileOpen((v) => !v)}>
-          {profileOpen ? <ChevronDown size={12} /> : <ChevronUp size={12} />} Perfil
-        </button>
-        {profileOpen && (
-          <div className="rounded-xl bg-black/60 border border-white/10 px-3 py-2">
-            <div className="flex flex-wrap gap-3 text-[11px] text-white/80">
-              <span>{(stats.distanceM / 1000).toFixed(2)} km</span>
-              <span>↑ {Math.round(stats.ascentM)} m</span>
-              <span>↓ {Math.round(stats.descentM)} m</span>
-              {stats.eleMin != null && <span>min {Math.round(stats.eleMin)} m</span>}
-              {stats.eleMax != null && <span>max {Math.round(stats.eleMax)} m</span>}
-              {crop && <span>sel {((crop[1] - crop[0]) / 1000).toFixed(2)} km</span>}
-            </div>
-            <svg
-              viewBox="0 0 400 56"
-              className="w-full h-14 mt-1"
-              onMouseMove={(e) => {
-                const r = e.currentTarget.getBoundingClientRect();
-                const t = (e.clientX - r.left) / r.width;
-                setHlDistM(t * stats.distanceM);
-              }}
-              onMouseLeave={() => setHlDistM(null)}
-            >
-              {profile.filter((p) => p.ele != null).length >= 2 && (() => {
-                const eles = profile.map((p) => p.ele ?? 0);
-                const min = Math.min(...eles);
-                const max = Math.max(...eles);
-                const span = Math.max(1, max - min);
-                const d = profile.map((p, i) => {
-                  const x = (p.distM / Math.max(1, stats.distanceM)) * 400;
-                  const y = 50 - ((p.ele ?? min) - min) / span * 44;
-                  return `${i === 0 ? "M" : "L"}${x},${y}`;
-                }).join(" ");
-                return <path d={d} fill="none" stroke="#f97316" strokeWidth="2" />;
-              })()}
-            </svg>
-          </div>
         )}
       </div>
 
-      <div className="absolute bottom-2 right-3 z-10 flex gap-1">
-        <button type="button" className={barBtn} onClick={() => {
-          const gpx = exportGpx(engineRef.current.doc, capsuleRef.current);
-          const blob = new Blob([gpx], { type: "application/gpx+xml" });
-          const a = document.createElement("a");
-          a.href = URL.createObjectURL(blob);
-          a.download = `${title.replace(/\s+/g, "_")}.gpx`;
-          a.click();
-          if (embedNavRideApp) postToNavRideApp("EXPORT_GPX", { gpxXml: gpx, name: title });
-        }}><Download size={14} /></button>
-      </div>
-
-      {status && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-20 rounded-lg bg-black/75 px-3 py-1.5 text-xs text-white/80 flex items-center gap-2">
-          {status}
-          <button type="button" onClick={() => setStatus(null)}><X size={12} /></button>
-        </div>
-      )}
-      {uploadMsg && (
-        <div className={`absolute top-24 left-1/2 -translate-x-1/2 z-20 rounded-lg px-3 py-1.5 text-xs ${uploadMsg.ok ? "bg-emerald-900/80" : "bg-red-900/80"}`}>
-          {uploadMsg.text}
-        </div>
-      )}
-
       <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        className="absolute bottom-2 left-3 z-0 sr-only"
-        aria-label="Nombre de ruta"
+        ref={gpxFileInputRef}
+        type="file"
+        accept=".gpx,application/gpx+xml,text/xml"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void handleGpxFile(f);
+        }}
       />
+
+      <GpxToolPalette
+        editorMode={editorMode}
+        transportMode={transportMode}
+        segmentMode={drawMode}
+        onLayers={() => setStyleMenuOpen((value) => !value)}
+        onSave={() => void handleSave()}
+        onImport={() => gpxFileInputRef.current?.click()}
+        onExport={handleDownload}
+        onLaunch={() => void handleLaunch()}
+        onExit={() => router.push("/")}
+        showExit={!embedNavRideApp}
+        onAddSegment={handleAddSeg}
+        onSplitSegment={() => void handleSplitAtActive()}
+        onJoinSegment={() => void handleJoinNext()}
+        onReverseRoute={() => void handleReverse()}
+        onInsertMode={() => {
+          if (!activeWpt) {
+            setRouteError("Selecciona un punto y luego Insertar entre puntos.");
+            return;
+          }
+          setInsertMode(true);
+          insertModeRef.current = true;
+          setRouteError("Toca el mapa para insertar después del punto seleccionado.");
+        }}
+        onShowAnalysis={() => {
+          setShowAnalysis(true);
+          setShowAlternatives(false);
+        }}
+        onShowAlternatives={() => {
+          setShowAlternatives(true);
+          setShowAnalysis(false);
+        }}
+        onEditorModeChange={setEditorMode}
+        onTransportChange={handleTransportChange}
+        onSegmentModeChange={(mode) => {
+          void handleSegmentModeChange(mode);
+        }}
+        canSave={totalRoutePts >= 2 && !saving && !uploading}
+        canExport={totalRoutePts >= 2}
+        canLaunch={totalRoutePts >= 2 && !saving && !uploading}
+        canAddSegment={advanced}
+        canSplit={advanced && !!activeWpt && !!activeSeg && activeSeg.waypoints.length >= 3}
+        canJoin={advanced && segments.length >= 2}
+        canReverse={totalWpts >= 2}
+        canInsert={advanced && !!activeWpt}
+      />
+
+      {pointMenu && menuSeg && (
+        <GpxPointContextMenu
+          x={pointMenu.x}
+          y={pointMenu.y}
+          pointIndex={pointMenu.idx}
+          totalPoints={menuSeg.waypoints.length}
+          isShaping={menuKind === "shaping"}
+          advanced={advanced}
+          onClose={() => setPointMenu(null)}
+          onAction={(action) => void handlePointMenuAction(action)}
+        />
+      )}
+
+      {importDialog && (
+        <GpxImportDialog
+          dialog={importDialog}
+          onChoose={(choice) => void handleImportChoice(choice)}
+          onCancel={() => setImportDialog(null)}
+        />
+      )}
     </div>
   );
 }

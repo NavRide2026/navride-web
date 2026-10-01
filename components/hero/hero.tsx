@@ -1,68 +1,33 @@
-﻿import Image from "next/image";
 import Link from "next/link";
+import { HeroWordmark } from "@/components/site/hero-wordmark";
+import { RouteMotionBackground } from "@/components/site/route-motion-background";
 import { BRAND, USE_CASES } from "@/lib/site/constants";
 
 export default function Hero() {
   return (
-    <section className="relative px-4 md:px-8 pb-16 md:pb-24">
-      <div className="max-w-6xl mx-auto pt-8 md:pt-16">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-          <div>
-            <p className="text-[#35C759] text-sm font-semibold tracking-widest uppercase mb-4">
-              OEM Offroad Navigation
-            </p>
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-[1.1]">
-              Navegación GPX para moto, trail y aventura
-            </h1>
-            <p className="mt-6 text-lg text-white/60 max-w-xl leading-relaxed">
-              NavRide es navegación offroad orientada a GPX: importas un track,
-              lo sigues en el mapa con HUD y alternas al modo Rally para leer el
-              tramo siguiente por dificultad. Diseñada para uso en campo.
-            </p>
+    <section className="relative isolate overflow-hidden border-b border-white/5 px-4 pb-14 md:px-8 md:pb-20">
+      <RouteMotionBackground />
 
-            <div className="mt-8 flex flex-wrap gap-2">
-              {USE_CASES.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-full border border-white/10 bg-[#1C1C1E] px-3 py-1 text-xs text-white/70"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-
-            <div className="mt-10 flex flex-col sm:flex-row gap-4">
-              <Link
-                href="/producto"
-                className="inline-flex items-center justify-center rounded-full bg-[#FF5A1F] px-6 py-3 text-white font-semibold hover:bg-[#FF5A1F]/90 transition"
-              >
-                Conocer el producto
-              </Link>
-              <Link
-                href="/planes"
-                className="inline-flex items-center justify-center rounded-full border border-white/15 px-6 py-3 text-white/80 font-medium hover:border-white/30 hover:text-white transition"
-              >
-                Ver planes
-              </Link>
-            </div>
-
-            <p className="mt-6 text-xs text-white/40">
-              Beta {BRAND.version} · Trial {7} días · Suscripción vía Google Play
-            </p>
+      <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 py-12 lg:min-h-[calc(100dvh-5rem)] lg:grid-cols-[1.08fr_.92fr] lg:gap-16 lg:py-16">
+        <div className="min-w-0">
+          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-[#8BEA00]">Navegación off-road</p>
+          <h1 className="max-w-2xl text-4xl font-black leading-[1.04] tracking-[-0.045em] text-white sm:text-5xl lg:text-7xl">
+            Tu ruta GPX.
+            <span className="mt-1 block font-black italic text-[#FF8500]">Sin perder el rumbo.</span>
+          </h1>
+          <p className="mt-6 max-w-xl text-base leading-relaxed text-white/70 sm:text-lg">Importa una ruta, síguela con el mapa y el HUD y consulta el siguiente tramo sin apartar la atención del recorrido.</p>
+          <div className="mt-7 flex flex-wrap gap-2">{USE_CASES.map((tag) => <span key={tag} className="rounded-full border border-white/12 bg-[#171A1F]/72 px-3 py-1.5 text-xs text-white/75 backdrop-blur-sm">{tag}</span>)}</div>
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <Link href="/producto" className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#FF8500] px-6 font-semibold text-[#080808] shadow-[0_10px_32px_rgba(255,133,0,.20)] hover:bg-[#ff9d2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8BEA00]">Conocer NavRide</Link>
+            <Link href="/editor-gpx" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 bg-[#111318]/65 px-6 font-medium text-white/90 backdrop-blur-md hover:border-[#FF8500]/60 hover:bg-[#171A1F]">Probar el editor GPX</Link>
           </div>
+          <p className="mt-5 text-xs text-white/45">Beta {BRAND.version}</p>
+        </div>
 
-          <div className="relative flex justify-center lg:justify-end">
-            <div className="relative w-full max-w-sm aspect-[9/19] rounded-[2rem] border border-white/10 bg-[#101114] shadow-2xl overflow-hidden">
-              <Image
-                src="/navride_splash.png"
-                alt="NavRide en dispositivo"
-                fill
-                className="object-cover object-top"
-                priority
-              />
-              <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#050608] to-transparent" />
-            </div>
-          </div>
+        <div className="hero-brand-integrated">
+          <div className="hero-brand-halo" />
+          <HeroWordmark />
+          <p className="hero-brand-tagline">NAVEGACIÓN · GPX · AVENTURA</p>
         </div>
       </div>
     </section>

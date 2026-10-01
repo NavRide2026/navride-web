@@ -1,11 +1,11 @@
-import type { NavRideCue, NavRideCueSeverity } from "./navride-route/types.ts";
+import type { NavRideCue, NavRideCueSeverity } from "./navride-route/types";
 import {
   flattenRouteLngLats,
   lngLatAtProgressM,
   NOTE_OFF_TRACK_METERS,
   progressMNearestOnPolyline,
   type LngLat,
-} from "./geo.ts";
+} from "./geo";
 
 export const SRC_ROUTE_NOTES = "route-notes-source";
 export const LYR_ROUTE_NOTES = "route-notes-layer";

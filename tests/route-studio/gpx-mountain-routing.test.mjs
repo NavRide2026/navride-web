@@ -13,12 +13,12 @@ describe("gpx_mountain_routing_policy", () => {
     assert.deepEqual(ids.sort(), ["bike", "car", "moto", "walk"].sort());
   });
 
-  it("walk uses foot profile (paths/footways when graph allows)", () => {
-    assert.equal(TRANSPORT_MODES.find((m) => m.id === "walk")?.osrmProfile, "foot");
+  it("walk stays off public OSRM; Valhalla pedestrian is the authority", () => {
+    assert.equal(TRANSPORT_MODES.find((m) => m.id === "walk")?.osrmProfile, "none");
   });
 
-  it("bike uses bike profile (not driving)", () => {
-    assert.equal(TRANSPORT_MODES.find((m) => m.id === "bike")?.osrmProfile, "bike");
+  it("bike stays off public OSRM; Valhalla bicycle is the authority", () => {
+    assert.equal(TRANSPORT_MODES.find((m) => m.id === "bike")?.osrmProfile, "none");
   });
 
   it("car uses driving (not path)", () => {

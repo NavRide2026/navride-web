@@ -25,7 +25,9 @@ export async function middleware(request: NextRequest) {
     {
       cookies: {
         getAll: () => request.cookies.getAll(),
-        setAll: (cookiesToSet) => {
+        setAll: (
+          cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[],
+        ) => {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           )
@@ -75,11 +77,6 @@ export async function middleware(request: NextRequest) {
     if (role !== 'police' && role !== 'admin') {
       return NextResponse.redirect(new URL('/', request.url))
     }
-  }
-
-  if (pathname.startsWith("/editor-gpx")) {
-    supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate")
-    supabaseResponse.headers.set("Pragma", "no-cache")
   }
 
   return supabaseResponse

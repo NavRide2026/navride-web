@@ -1,119 +1,60 @@
-﻿import Link from "next/link";
-import { BRAND, LEGAL_DOCS } from "@/lib/site/constants";
-import { NAV_APP_LINKS } from "@/lib/site/navigation";
+import Link from "next/link";
+import { BrandLockup } from "@/components/site/brand-lockup";
+import { BRAND } from "@/lib/site/constants";
+
+const exploreLinks = [
+  ["/producto", "Producto"],
+  ["/funciones", "Funciones"],
+  ["/planes", "Planes"],
+  ["/roadmap", "Evolución"],
+  ["/novedades", "Novedades"],
+] as const;
+
+const toolLinks = [
+  ["/editor-gpx", "Editor de rutas"],
+  ["/mis-rutas", "Mis rutas"],
+  ["/mi-garaje", "Mi garaje"],
+  ["/perfil", "Perfil"],
+] as const;
+
+const supportLinks = [
+  ["/legal", "Centro legal"],
+  ["/legal/politica-privacidad", "Privacidad"],
+  ["/legal/licenses.html", "Licencias y atribuciones"],
+  ["/soporte", "Soporte"],
+  ["/contacto", "Contacto"],
+] as const;
+
+const linkClass = "inline-flex min-h-10 items-center text-sm text-white/55 transition hover:text-[#FF9D2E] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8BEA00]";
+
+function LinkGroup({ title, links }: { title: string; links: readonly (readonly [string, string])[] }) {
+  return (
+    <nav aria-label={title}>
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-white/80">{title}</h2>
+      <ul className="space-y-0.5">{links.map(([href, label]) => <li key={href}><Link href={href} target={href === "/editor-gpx" ? "_blank" : undefined} rel={href === "/editor-gpx" ? "noopener noreferrer" : undefined} className={linkClass}>{label}</Link></li>)}</ul>
+    </nav>
+  );
+}
 
 export default function Footer() {
   return (
-    <footer className="border-t border-white/5 bg-[#050608] mt-20">
-      <div className="max-w-6xl mx-auto px-4 md:px-8 py-12 grid gap-10 md:grid-cols-3">
-        <div>
-          <p className="text-white font-bold text-lg mb-2">{BRAND.name}</p>
-          <p className="text-white/50 text-sm leading-relaxed">
-            {BRAND.taglineEs}. Beta {BRAND.version}.
-          </p>
-        </div>
-
-        <div>
-          <p className="text-white/80 font-semibold text-sm mb-3 uppercase tracking-wider">
-            Producto
-          </p>
-          <ul className="space-y-2 text-sm text-white/50">
-            <li>
-              <Link href="/producto" className="hover:text-white transition">
-                Qué es NavRide
-              </Link>
-            </li>
-            <li>
-              <Link href="/planes" className="hover:text-white transition">
-                Planes
-              </Link>
-            </li>
-            <li>
-              <Link href="/funciones" className="hover:text-white transition">
-                Funciones
-              </Link>
-            </li>
-            <li>
-              <Link href="/android-auto" className="hover:text-white transition">
-                Android Auto
-              </Link>
-            </li>
-            <li>
-              <Link href="/novedades" className="hover:text-white transition">
-                Novedades
-              </Link>
-            </li>
-            <li>
-              <Link href="/roadmap" className="hover:text-white transition">
-                Roadmap
-              </Link>
-            </li>
-            {NAV_APP_LINKS.map((link) => (
-              <li key={link.href}>
-                <Link href={link.href} className="hover:text-[#f97316] transition">
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-            <li>
-              <Link href="/login" className="hover:text-white transition">
-                Iniciar Sesión
-              </Link>
-            </li>
-          </ul>
-        </div>
-
-        <div>
-          <p className="text-white/80 font-semibold text-sm mb-3 uppercase tracking-wider">
-            Legal y soporte
-          </p>
-          <ul className="space-y-2 text-sm text-white/50">
-            <li>
-              <Link href="/legal" className="hover:text-white transition">
-                Centro legal
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/legal/politica-privacidad"
-                className="hover:text-white transition"
-              >
-                Política de privacidad
-              </Link>
-            </li>
-            <li>
-              <Link href="/legal/terms.html" className="hover:text-white transition">
-                Términos de servicio
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/legal/data-deletion.html"
-                className="hover:text-white transition"
-              >
-                Eliminación de datos
-              </Link>
-            </li>
-            <li>
-              <Link href="/contacto" className="hover:text-white transition">
-                Contacto
-              </Link>
-            </li>
-            <li>
-              <Link href="/soporte" className="hover:text-white transition">
-                Soporte
-              </Link>
-            </li>
-          </ul>
-        </div>
+    <footer className="mt-16 border-t border-white/10 bg-[#0d0f12] md:mt-20">
+      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-10 sm:grid-cols-2 md:px-8 lg:grid-cols-[1.35fr_1fr_1fr_1fr] lg:py-14">
+        <section className="sm:col-span-2 lg:col-span-1">
+          <BrandLockup size="md" />
+          <p className="mt-5 max-w-sm text-sm leading-relaxed text-white/55">Navegación off-road orientada a rutas GPX para moto, trail y aventura.</p>
+          <p className="mt-3 text-xs text-white/35">Beta {BRAND.version}</p>
+        </section>
+        <LinkGroup title="Explorar" links={exploreLinks} />
+        <LinkGroup title="Herramientas" links={toolLinks} />
+        <LinkGroup title="Legal y ayuda" links={supportLinks} />
       </div>
 
-      <div className="border-t border-white/5 py-6 text-center text-xs text-white/40">
-        © {new Date().getFullYear()} {BRAND.holderName}. {LEGAL_DOCS.length}{" "}
-        documentos legales ·{" "}
-        <Link href="/legal/licenses.html" className="hover:text-white/60">
-          Atribuciones
-        </Link>
+      <div className="border-t border-white/5 px-4 py-6">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 text-center text-xs text-white/40 sm:flex-row sm:text-left">
+          <span>© {new Date().getFullYear()} {BRAND.holderName}</span>
+          <Link href="/legal/licenses.html" className="underline underline-offset-4 hover:text-white/70">Atribuciones cartográficas</Link>
+        </div>
       </div>
     </footer>
   );

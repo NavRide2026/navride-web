@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Soporte",
-  description: "Soporte para usuarios de NavRide en Google Play y beta cerrada.",
+  description: "Ayuda y soporte para usuarios de NavRide.",
 };
 
 const FAQ = [
@@ -15,8 +15,8 @@ const FAQ = [
     a: "Tras reinstalar, abre NavRide → Premium → «Restaurar suscripción» con la misma cuenta de Google Play que realizó la compra.",
   },
   {
-    q: "¿Cómo elimino mis datos?",
-    a: "Ajustes → Privacidad → Eliminar mis datos. También puedes desinstalar la app. Consulta la política de eliminación de datos en el centro legal.",
+    q: "¿Cómo elimino mi cuenta y mis datos?",
+    a: "Puedes iniciar la eliminación desde la app o desde la página web de eliminación de cuenta. Los datos que solo estén guardados en tu dispositivo se eliminan desde la app o al desinstalarla.",
   },
   {
     q: "¿Cómo cancelo la suscripción?",
@@ -24,15 +24,15 @@ const FAQ = [
   },
   {
     q: "¿Necesito conexión a internet?",
-    a: "Approach (ir al inicio del GPX) requiere red. Navegación GPX online requiere plan activo tras el trial. Con Pilot puedes preparar corredor offline o usar .mbtiles para navegar sin red en rutas preparadas.",
+    a: "Algunas funciones online requieren conexión. Si has descargado previamente un mapa compatible, puedes utilizar las funciones offline disponibles para esa zona o ruta.",
   },
   {
-    q: "¿Qué es el plan Rider?",
-    a: "Rider (4,99 €/mes) es un plan de referencia en la UI con límites de tracks y rally. No está vendido en Google Play actualmente. La suscripción real es NavRide Adventure (Pilot).",
+    q: "¿Qué incluye cada plan?",
+    a: "Consulta la página Planes para ver los límites, funciones y precios vigentes de Free, Rider y Pilot.",
   },
   {
     q: "¿Cómo funcionan los mapas offline?",
-    a: "Con Pilot: importa archivos .mbtiles o prepara el corredor de una ruta favorita (Rutas guardadas → Favoritos → Preparar offline). Los tiles se reutilizan al navegar sin red en esa ruta.",
+    a: "Descarga previamente una zona o ruta compatible. Cuando no tengas cobertura, NavRide utilizará el contenido offline que ya esté disponible en el dispositivo.",
   },
   {
     q: "¿Por qué el GPS varía?",
@@ -51,7 +51,7 @@ export default function SoportePage() {
         <SectionHeading
           eyebrow="Soporte"
           title="Ayuda para usuarios de Google Play"
-          description="Preparado para closed testing y producción. Sin chatbot — contacto directo."
+          description="Respuestas rápidas a las dudas más habituales y contacto directo si necesitas ayuda."
         />
 
         <div className="mb-10 rounded-2xl border border-[#FF5A1F]/30 bg-[#FF5A1F]/5 p-6">
@@ -89,7 +89,7 @@ export default function SoportePage() {
 
         <div className="grid sm:grid-cols-2 gap-4 text-sm">
           <Link
-            href="/legal/eliminacion-datos"
+            href="/legal/data-deletion.html"
             className="rounded-xl border border-white/10 p-4 hover:border-white/20 transition text-white/70"
           >
             Eliminación de datos →

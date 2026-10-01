@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { NewFolderForm } from '@/components/site/new-folder-form';
-import { Download, Trash2, MapPin, Smartphone, Globe, RefreshCw } from 'lucide-react';
+import { Download, Trash2, MapPin, Smartphone, Globe, RefreshCw, Route } from 'lucide-react';
+import SavedRoutesList from '@/components/profile/SavedRoutesList';
 
 interface GpxTrack {
   id: string;
@@ -322,6 +323,21 @@ export default function MisRutas() {
           </button>
         </div>
 
+        <section className="mb-8 rounded-2xl border border-white/10 bg-[#15181E] p-4 md:p-5">
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
+            <Route size={16} className="text-[#f97316]" />
+            Rutas guardadas
+          </h2>
+          <SavedRoutesList showHeader={false} compact />
+        </section>
+
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold text-white">Tracks sincronizados desde la app</h2>
+          <p className="mt-1 text-xs text-[#666]">
+            Tracks creados o sincronizados desde NavRide.
+          </p>
+        </div>
+
         {foldersAvailable && (
           <div className="flex flex-wrap items-center gap-2 mb-6">
             <FolderChip
@@ -452,6 +468,30 @@ export default function MisRutas() {
 
               {/* Acciones */}
               <div className="flex items-center gap-1 flex-shrink-0">
+                {track.gpx_xml && (
+                  <a
+                    href={`/editor-gpx?importSession=1`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => {
+                      try {
+                        sessionStorage.setItem(
+                          "navride:pending-gpx-import",
+                          JSON.stringify({
+                            fileName: `${track.name}.gpx`,
+                            xml: track.gpx_xml,
+                          }),
+                        );
+                      } catch {
+                        // sessionStorage may be unavailable
+                      }
+                    }}
+                    className="p-2 rounded-lg hover:bg-[#22252C] transition text-[#888] hover:text-[#f97316]"
+                    title="Ver ruta en el editor"
+                  >
+                    <Route size={16} />
+                  </a>
+                )}
                 {track.gpx_xml && (
                   <button
                     onClick={() => downloadGpx(track)}

@@ -46,8 +46,7 @@ export default function DeleteAccountPage() {
       });
       if (error) {
         setMsg(
-          `No se pudo completar el borrado técnico (${error.message}). ` +
-            `Si la función aún no está desplegada, escribe a ${BRAND.supportEmail} ` +
+          `No se pudo completar la eliminación. Escribe a ${BRAND.supportEmail} ` +
             `desde el email de la cuenta indicando «Eliminar cuenta NavRide».`,
         );
         try {
@@ -98,30 +97,26 @@ export default function DeleteAccountPage() {
           ← Centro legal
         </Link>
         <p className="text-[#FF5A1F] text-sm font-semibold tracking-widest uppercase mb-3">
-          Google Play · Account deletion
+          Privacidad
         </p>
         <h1 className="text-3xl md:text-4xl font-bold text-white mb-3">
           Eliminar cuenta NavRide
         </h1>
         <p className="text-white/60 text-sm mb-8">
-          Ruta externa exigida por Google Play User Data. Misma cuenta que la app
-          (Supabase Auth). Accesible sin instalar la app.
+          Desde aquí puedes solicitar la eliminación de tu cuenta y de los datos
+          asociados sin necesidad de tener la app instalada.
         </p>
 
         <div className="rounded-xl border border-white/10 bg-[#121214] p-5 mb-6 text-sm text-white/70 space-y-2">
           <p className="text-white font-medium">Qué se elimina</p>
           <ul className="list-disc pl-5 space-y-1">
-            <li>Cuenta de autenticación (email/contraseña)</li>
-            <li>Perfil (<code>user_profiles</code>)</li>
-            <li>
-              GPX / rutas cloud (<code>gpx_tracks</code>, <code>gpx_routes</code>
-              , Storage <code>gpx/</code>)
-            </li>
-            <li>Votos de alertas; alertas propias desactivadas/desvinculadas</li>
+            <li>Tu cuenta de acceso</li>
+            <li>Tu perfil</li>
+            <li>Las rutas y datos sincronizados asociados a tu cuenta</li>
           </ul>
           <p>
-            La navegación local sin cuenta no se ve afectada. GPX solo-local en
-            el dispositivo no se borra desde esta página.
+            Los archivos que solo existan en tu dispositivo no pueden borrarse
+            desde esta página. Puedes eliminarlos desde la app o desinstalándola.
           </p>
         </div>
 
@@ -176,7 +171,7 @@ export default function DeleteAccountPage() {
         )}
 
         <p className="mt-8 text-sm text-white/50">
-          Alternativa por email:{" "}
+          Si prefieres solicitarlo por email:{" "}
           <a
             href={`mailto:${BRAND.supportEmail}?subject=Eliminar%20cuenta%20NavRide`}
             className="text-[#FF5A1F] hover:underline"

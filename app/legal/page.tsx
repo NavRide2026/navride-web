@@ -17,7 +17,7 @@ export default function LegalPage() {
         <SectionHeading
           eyebrow="Legal"
           title="Centro legal NavRide"
-          description={`Documentación OEM alineada con la app. Última actualización: ${BRAND.lastUpdated}.`}
+          description={`Privacidad, condiciones de uso, pagos, eliminación de cuenta y atribuciones. Actualizado: ${BRAND.lastUpdated}.`}
         />
 
         <section className="mb-14">
@@ -36,7 +36,7 @@ export default function LegalPage() {
                 <span className="text-white font-medium">{doc.title}</span>
                 {doc.critical ? (
                   <span className="block text-[#FF5A1F] text-xs mt-1">
-                    URL Google Play
+                    Documento principal
                   </span>
                 ) : null}
               </Link>
@@ -49,7 +49,7 @@ export default function LegalPage() {
             Atribuciones cartográficas
           </h3>
           <p className="text-white/50 text-sm mb-6">
-            Todas las URLs son clicables y abren el sitio oficial del proveedor.
+            Proveedores y fuentes de datos utilizados por los mapas de NavRide.
           </p>
           <div className="space-y-3">
             {ATTRIBUTIONS.map((attr) => (

@@ -2,7 +2,7 @@
  * MapRoutingDatasetConsistency — diagnóstico editor/app.
  *
  * MapLibre/OpenFreeMap tiles pueden ser más recientes que el graph de routing
- * (OSRM público en web Route Studio; Valhalla/NRG tiles en app).
+ * (OSRM público en web Editor de rutas; Valhalla/NRG tiles en app).
  *
  * Política:
  * - EDITOR_MAX_SNAP_METERS = 25

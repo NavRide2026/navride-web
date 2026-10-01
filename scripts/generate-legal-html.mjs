@@ -18,109 +18,86 @@ function p(text) {
   return `<p>${text}</p>`;
 }
 
-const updated = "2026-08-29";
+const updated = "2026-09-19";
 const email = '<a href="mailto:navride@outlook.com">navride@outlook.com</a>';
-const location = "Mollet del Vallès, Barcelona, Cataluña, España";
+const location = "España";
 
 const docs = {
   "legal-notice.html": wrap(
     "Aviso legal",
     `<h1>Aviso legal — NavRide</h1><p class="last-updated">Última actualización: ${updated}</p>
-    <h2>Titular</h2>${p(`Daniel Montero Mora<br>${location}<br>Email: ` + email)}
-    <h2>1. Identificación y normativa</h2>${p("Este aviso se publica conforme a la Ley 34/2002 (LSSI-CE) y normativa aplicable en España.")}
-    <h2>2. Objeto</h2>${p("NavRide es una aplicación móvil de navegación offroad para motos, coches y bicicletas. Permite visualizar mapas, importar rutas GPX, navegar con GPS, grabar tracks y acceder a funciones premium mediante suscripción NavRide Adventure gestionada por Google Play.")}
-    ${p("NavRide funciona principalmente en el dispositivo (offline-first). Para funciones cloud opcionales (cuenta, rutas, alertas) puede usar Supabase. La navegación GPS no depende de telemetría publicitaria.")}
-    <h2>3. Condición de usuario</h2>${p("El uso de la app implica la aceptación de este Aviso legal, los Términos y condiciones y la Política de privacidad vigentes.")}
-    <h2>4. Reglas de uso</h2>${p("El usuario se compromete a un uso lícito, a no interferir en el funcionamiento de la app y a mantener una conducción segura. NavRide es una ayuda a la navegación; no sustituye las señales de tráfico ni la atención del conductor.")}
-    <h2>5. Propiedad intelectual</h2>${p("Interfaces, diseño, software y contenidos propios de NavRide están protegidos por la legislación de propiedad intelectual. Los mapas utilizan datos y estilos de terceros (OpenStreetMap, CARTO, OpenTopoMap) sujetos a sus licencias.")}
-    <h2>6. Servicios de terceros</h2>${p("La app puede usar Google Play, tiles cartográficos (CARTO, OpenTopoMap, datos © OpenStreetMap contributors), enrutado OSRM, Open-Meteo (clima opcional) y servicios del sistema Android (GPS, voz).")}
-    <h2>7. Limitación de responsabilidad</h2>${p("NavRide no garantiza exactitud permanente de GPS, mapas o rutas. El titular no se responsabiliza de daños derivados del uso salvo en los supuestos legalmente exigibles.")}
-    <h2>8. Legislación y fuero</h2>${p("Legislación española. Jurisdicción: Barcelona, salvo normativa imperativa en contrario.")}
+    <h2>Titular</h2>${p(`NavRide Developer<br>${location}<br>Email: ` + email)}
+    <h2>Servicio</h2>${p("NavRide ofrece una aplicación y servicios web relacionados con navegación, rutas GPX y mapas. Algunas funciones pueden requerir conexión, una cuenta o un plan compatible.")}
+    <h2>Uso</h2>${p("Debes utilizar NavRide de forma lícita y segura. La aplicación es una ayuda a la navegación y no sustituye las señales, las normas de circulación ni la atención necesaria durante la conducción.")}
+    <h2>Propiedad intelectual</h2>${p('Los contenidos, diseño y software propios de NavRide están protegidos por la normativa aplicable. Los mapas, datos y servicios de terceros mantienen sus propias licencias y atribuciones, disponibles en <a href="/legal/licenses.html">Licencias y atribuciones</a>.')}
+    <h2>Disponibilidad y responsabilidad</h2>${p("La disponibilidad y precisión de GPS, mapas, rutas y servicios externos puede variar. Nada en este aviso limita los derechos que la normativa aplicable reconozca al usuario.")}
+    <h2>Legislación aplicable</h2>${p("Se aplica la legislación española, sin perjuicio de las normas imperativas de protección de consumidores y usuarios que correspondan.")}
     <h2>Contacto</h2>${p(email)}`
   ),
 
   "terms.html": wrap(
     "Términos y condiciones",
     `<h1>Términos y condiciones — NavRide</h1><p class="last-updated">Última actualización: ${updated}</p>
-    <h2>1. Aceptación</h2>${p('Al instalar o usar NavRide aceptas estos Términos y la <a href="/legal/politica-privacidad">Política de privacidad</a>.')}
-    <h2>2. Descripción del servicio</h2>${p("Navegación offroad con mapas online/offline, importación GPX, HUD, voz opcional y suscripción premium NavRide Adventure.")}
-    <h2>3. Planes</h2>
-    <ul><li><strong>Free:</strong> Prueba gratuita de 7 días de navegación GPX online. Al finalizar, la navegación requiere suscripción Pilot o plan compatible.</li>
-    <li><strong>Rider:</strong> 4,99 € / mes · hasta 10 tracks/mes (máx. 50 km c/u), rally hasta 10 h/mes. Plan de referencia UI — no vendido en Play actualmente.</li>
-    <li><strong>Pilot:</strong> 7,99 € / mes · desbloqueo total: navegación, rally, mapas offline y herramientas GPX. Suscripción NavRide Adventure en Google Play.</li></ul>
-    <h2>4. Uso seguro</h2>${p("Cumple la normativa de tráfico. Configura rutas antes de conducir. Eres responsable de tu conducción.")}
-    <h2>5. GPS, mapas y offline</h2>${p("La precisión GPS y los mapas pueden variar (túneles, cobertura, datos desactualizados). OSRM y mapas online requieren conexión.")}
-    <h2>6. Contenido GPX</h2>${p("Eres responsable de la licitud de los tracks que importes. La adherencia automática de GPX usa el perfil «driving» de OSRM (red viaria para vehículos).")}
-    <h2>7. Limitación de responsabilidad</h2>${p("NavRide no se responsabiliza de accidentes, sanciones o daños por errores de posicionamiento, rutas inexactas o uso inadecuado.")}
-    <h2>8. Suscripción</h2>${p('Ver <a href="/legal/subscription.html">Condiciones de suscripción</a> y <a href="/legal/refund.html">Política de pagos</a>. Ver <a href="/legal/politica-privacidad">Política de privacidad</a>.')}
-    <h2>9. Modificaciones</h2>${p("Podemos actualizar la app y estos términos. El uso continuado implica aceptación.")}
-    <h2>10. Ley aplicable</h2>${p("Legislación española. Jurisdicción Barcelona, salvo normativa imperativa.")}
+    <h2>1. Aceptación</h2>${p('Al utilizar NavRide aceptas estos términos y la <a href="/legal/politica-privacidad">Política de privacidad</a>.')}
+    <h2>2. Servicio</h2>${p("NavRide permite planificar, importar y seguir rutas GPX y utilizar funciones de navegación y mapas según la versión y el plan disponibles.")}
+    <h2>3. Cuenta</h2>${p("Algunas funciones permiten usar una cuenta para guardar o sincronizar información. Eres responsable de mantener seguras tus credenciales y de la información que guardes en tu cuenta.")}
+    <h2>4. Rutas y conducción segura</h2>${p("Comprueba la ruta y las condiciones reales antes y durante el recorrido. No manipules el dispositivo mientras conduces. Debes respetar la señalización, las restricciones de acceso y la normativa aplicable.")}
+    <h2>5. Contenido del usuario</h2>${p("Eres responsable de las rutas y archivos que importes, crees o compartas, así como de disponer de los derechos necesarios sobre ellos.")}
+    <h2>6. Planes y compras</h2>${p('Las funciones, límites y precios vigentes se muestran en <a href="/planes">Planes</a> y, cuando la compra se realiza en Android, en la pantalla de compra de Google Play antes de confirmar el pago.')}
+    <h2>7. Disponibilidad</h2>${p("GPS, mapas, cobertura y servicios externos pueden contener errores, sufrir interrupciones o no estar disponibles temporalmente.")}
+    <h2>8. Cambios</h2>${p("Podemos actualizar NavRide y estos términos cuando sea necesario. La versión vigente se publica en esta página.")}
+    <h2>9. Legislación aplicable</h2>${p("Se aplica la legislación española, sin perjuicio de la normativa imperativa que resulte aplicable al usuario.")}
     <h2>Contacto</h2>${p(email)}`
   ),
 
   "subscription.html": wrap(
     "Condiciones de suscripción",
-    `<h1>Condiciones de suscripción — NavRide Adventure</h1><p class="last-updated">Última actualización: ${updated}</p>
-    <h2>1. Planes disponibles</h2>
-    <ul><li><strong>Free:</strong> Prueba gratuita de 7 días de navegación GPX online.</li>
-    <li><strong>Rider:</strong> 4,99 € / mes · referencia UI, no vendido en Play actualmente.</li>
-    <li><strong>Pilot (NavRide Adventure):</strong> 7,99 € / mes · desbloqueo total vía Google Play.</li></ul>
-    <h2>2. Suscripción Pilot</h2>${p("Producto: navride_adventure_monthly. Proveedor: Google Play Billing. Renovación automática mensual hasta cancelación.")}
-    ${p("La suscripción NavRide Adventure se renueva automáticamente cada mes al precio indicado en Google Play hasta que la canceles. Puedes gestionar o cancelar en Google Play → Pagos y suscripciones → Suscripciones.")}
-    <h2>3. Activación y restauración</h2>${p("Tras confirmación de Google Play, NavRide activa el plan en el dispositivo. Tras reinstalar, usa «Restaurar suscripción» con la misma cuenta Google Play.")}
-    <h2>4. Cancelación y reembolsos</h2>${p('Ver <a href="/legal/refund.html">Política de pagos</a>. Los reembolsos se gestionan conforme a Google Play.')}
+    `<h1>Condiciones de suscripción — NavRide</h1><p class="last-updated">Última actualización: ${updated}</p>
+    <h2>Compra</h2>${p("Las suscripciones contratadas desde Android se procesan mediante Google Play. El precio, periodo de facturación y condiciones aplicables se muestran antes de confirmar la compra.")}
+    <h2>Renovación</h2>${p("Las suscripciones con renovación automática continúan hasta que las canceles en Google Play. La fecha y el importe de la siguiente renovación se gestionan desde tu cuenta de Google Play.")}
+    <h2>Cancelación</h2>${p("Puedes cancelar desde Google Play → Pagos y suscripciones → Suscripciones. La cancelación evita futuras renovaciones; el acceso se mantiene durante el periodo ya pagado, salvo que la normativa o Google Play indiquen otra cosa.")}
+    <h2>Restauración</h2>${p("Si reinstalas la aplicación, puedes restaurar una compra compatible utilizando la misma cuenta de Google Play con la que se realizó.")}
+    <h2>Planes</h2>${p('Consulta las funciones y precios publicados en <a href="/planes">Planes</a>.')}
     <h2>Contacto</h2>${p(email)}`
   ),
 
   "refund.html": wrap(
-    "Política de pagos",
-    `<h1>Política de pagos y reembolsos — NavRide</h1><p class="last-updated">Última actualización: ${updated}</p>
-    <h2>1. Proveedor</h2>${p("Los pagos de NavRide Adventure se procesan exclusivamente mediante Google Play Billing. NavRide no gestiona cobros directos ni almacena datos de pago.")}
-    <h2>2. Precio</h2>${p("7,99 € / mes — importe mostrado por Google Play al comprar.")}
-    <h2>3. Renovación automática</h2>${p("La suscripción se renueva mensualmente salvo cancelación previa en Google Play → Pagos y suscripciones → Suscripciones.")}
-    <h2>4. Cancelación</h2>${p("Puedes cancelar en cualquier momento. Mantienes acceso Pilot hasta fin del periodo pagado.")}
-    <h2>5. Reembolsos</h2>${p('Los reembolsos se solicitan a Google Play según su política (<a href="https://play.google.com/about/play-terms/" target="_blank" rel="noopener">play.google.com</a>). NavRide no procesa devoluciones directas salvo obligación legal.')}
-    <h2>6. Restauración</h2>${p("Usa «Restaurar suscripción» en la app con la cuenta Google Play que realizó la compra.")}
+    "Pagos y reembolsos",
+    `<h1>Pagos y reembolsos — NavRide</h1><p class="last-updated">Última actualización: ${updated}</p>
+    <h2>Pagos</h2>${p("Las compras digitales realizadas desde Android se procesan mediante Google Play. NavRide no recibe ni almacena los datos de tu tarjeta.")}
+    <h2>Cancelación</h2>${p("Puedes gestionar o cancelar una suscripción desde Google Play → Pagos y suscripciones → Suscripciones.")}
+    <h2>Reembolsos</h2>${p('Las solicitudes de reembolso de compras procesadas por Google Play se tramitan conforme a sus condiciones y a los derechos que te reconozca la normativa aplicable. Consulta <a href="https://support.google.com/googleplay/answer/2479637" target="_blank" rel="noopener">la ayuda oficial de Google Play</a>.')}
     <h2>Contacto</h2>${p(email)}`
   ),
 
   "data-deletion.html": wrap(
     "Eliminación de datos y cuenta",
     `<h1>Eliminación de datos y cuenta — NavRide</h1><p class="last-updated">Última actualización: ${updated}</p>
-    <h2>1. Ámbito</h2>${p("NavRide puede almacenar datos en el dispositivo y, si inicias sesión, en Supabase (perfil, rutas GPX, alertas y sesiones asociadas a tu usuario).")}
-    <h2>2. Cómo eliminar (in-app)</h2>
-    <ul><li><strong>Eliminar cuenta:</strong> Ajustes → Eliminar cuenta — reautenticación, Edge Function <code>delete-account</code>, borrado Auth + datos asociados y limpieza local de GPX cloud-linked.</li>
-    <li><strong>Desinstalación:</strong> elimina los datos locales (la cuenta cloud permanece hasta borrarla).</li></ul>
-    <h2>3. Solicitud web (requisito Google Play)</h2>
-    ${p('Ruta técnica: <a href="/delete-account">https://navride-web.vercel.app/delete-account</a> — inicia sesión y solicita borrado inmediato cuando el backend esté desplegado.')}
-    ${p("Alternativa email: escribe a " + email + " desde el email de la cuenta, indicando «Eliminar cuenta NavRide». Plazo habitual ≤ 30 días.")}
-    <h2>4. Qué se borra</h2>
-    <ul><li>Auth user</li><li>user_profiles</li><li>gpx_tracks / gpx_routes / Storage gpx/</li><li>alerta_votos; alertas propias desactivadas/desvinculadas</li></ul>
-    <h2>5. Suscripción Google Play</h2>${p("Eliminar datos o cuenta en NavRide NO cancela la suscripción. Cancélala en Google Play → Pagos y suscripciones.")}
-    <h2>6. Contacto</h2>${p(email)}`
+    <h2>Eliminar la cuenta</h2>${p('Puedes solicitar la eliminación desde la aplicación o desde la página <a href="/delete-account">Eliminar cuenta</a>. También puedes escribir a ' + email + " desde el correo asociado a tu cuenta.")}
+    <h2>Qué se elimina</h2>${p("Al eliminar tu cuenta se eliminan la cuenta de acceso y los datos asociados que NavRide mantiene para el perfil y la sincronización de rutas, salvo la información que deba conservarse temporalmente por una obligación legal.")}
+    <h2>Datos del dispositivo</h2>${p("Los archivos o datos que existan únicamente en tu dispositivo se eliminan desde la propia aplicación o al desinstalarla, según corresponda.")}
+    <h2>Suscripción</h2>${p("Eliminar la cuenta de NavRide no cancela automáticamente una suscripción de Google Play. Si tienes una suscripción activa, cancélala también desde Google Play.")}
+    <h2>Contacto</h2>${p(email)}`
   ),
 
   "gps-disclaimer.html": wrap(
-    "Responsabilidad GPS",
-    `<h1>Descargo de responsabilidad GPS — NavRide</h1><p class="last-updated">Última actualización: ${updated}</p>
-    ${p("NavRide es una ayuda a la navegación. El usuario es responsable de cumplir las normas de tráfico.")}
-    <h2>Limitaciones técnicas</h2>${p("GPS, cobertura, mapas y rutas OSRM/GPX pueden contener errores, retrasos o desactualización.")}
-    <h2>Conducta segura</h2>${p("Mantén la atención en la vía. No manipules el dispositivo en marcha.")}
-    <h2>Responsabilidad</h2>${p("El uso no sustituye tu criterio ni las señales. NavRide no se responsabiliza de accidentes, sanciones o daños derivados del uso.")}
-    <h2>Emergencias</h2>${p("Ante situación grave, contacta servicios de emergencia (112 en España).")}`
+    "Seguridad y navegación",
+    `<h1>Seguridad y navegación — NavRide</h1><p class="last-updated">Última actualización: ${updated}</p>
+    ${p("NavRide es una ayuda a la navegación. La información de GPS, mapas y rutas puede ser inexacta, incompleta o quedar desactualizada.")}
+    <h2>Durante la conducción</h2>${p("Mantén la atención en la vía, respeta la señalización y no manipules el dispositivo en marcha. La situación real del terreno y las indicaciones oficiales tienen prioridad.")}
+    <h2>Rutas</h2>${p("Una ruta puede atravesar zonas restringidas, privadas, cerradas o no aptas para tu vehículo. Comprueba siempre las condiciones y permisos necesarios antes de continuar.")}
+    <h2>Emergencias</h2>${p("NavRide no es un servicio de emergencias. En España y la Unión Europea, el número general de emergencias es el 112.")}`
   ),
 
   "licenses.html": wrap(
     "Licencias y atribuciones",
     `<h1>Licencias y atribuciones — NavRide</h1><p class="last-updated">Última actualización: ${updated}</p>
-    ${p("NavRide muestra atribución permanente en el mapa. Enlaces oficiales de cada proveedor:")}
-    <div class="attribution-card"><h3>OpenStreetMap</h3><div class="applies">Todos los modos de mapa</div><p>Datos cartográficos © OpenStreetMap contributors, ODbL.</p><p><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">https://www.openstreetmap.org/copyright</a></p></div>
-    <div class="attribution-card"><h3>CARTO</h3><div class="applies">Mapa Normal online y preparación offline</div><p>Mapa Normal (Voyager): tiles CARTO basados en OpenStreetMap.</p><p><a href="https://carto.com/attributions" target="_blank" rel="noopener">https://carto.com/attributions</a></p></div>
-    <div class="attribution-card"><h3>OpenTopoMap</h3><div class="applies">Mapa Topo online y preparación offline</div><p>© OpenTopoMap (CC-BY-SA), datos OSM, relieve SRTM.</p><p><a href="https://opentopomap.org/about" target="_blank" rel="noopener">https://opentopomap.org/about</a></p></div>
-    <div class="attribution-card"><h3>OSRM</h3><div class="applies">Approach y adherencia GPX (con conexión)</div><p>Project OSRM — enrutado y map matching. Datos © OSM.</p><p><a href="https://project-osrm.org/" target="_blank" rel="noopener">https://project-osrm.org/</a></p></div>
-    <div class="attribution-card"><h3>Open-Meteo</h3><div class="applies">Alertas climáticas (opcional)</div><p>Datos meteorológicos opcionales.</p><p><a href="https://open-meteo.com/" target="_blank" rel="noopener">https://open-meteo.com/</a></p></div>
-    <div class="attribution-card"><h3>Google Play</h3><div class="applies">NavRide Adventure</div><p>Distribución y facturación de suscripción.</p><p><a href="https://play.google.com/about/play-terms/" target="_blank" rel="noopener">https://play.google.com/about/play-terms/</a></p></div>
-    <h2>Privacidad OSRM</h2>${p('Ver <a href="/legal/politica-privacidad">Política de privacidad</a>, sección OSRM.')}`
+    ${p("NavRide utiliza mapas, datos y servicios de terceros. Las atribuciones se muestran también en el mapa cuando corresponde.")}
+    <div class="attribution-card"><h3>OpenStreetMap</h3><div class="applies">Datos cartográficos</div><p>© OpenStreetMap contributors. Datos disponibles bajo ODbL.</p><p><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">openstreetmap.org/copyright</a></p></div>
+    <div class="attribution-card"><h3>OpenFreeMap / OpenMapTiles</h3><div class="applies">Mapas vectoriales y etiquetas web</div><p>Servicios cartográficos basados en datos de OpenStreetMap y OpenMapTiles.</p><p><a href="https://openfreemap.org/" target="_blank" rel="noopener">openfreemap.org</a></p></div>
+    <div class="attribution-card"><h3>Esri World Imagery</h3><div class="applies">Vista satélite web</div><p>Imágenes y datos atribuidos a Esri y sus proveedores según se muestra en el mapa.</p><p><a href="https://www.esri.com/en-us/legal/terms/full-master-agreement" target="_blank" rel="noopener">esri.com</a></p></div>
+    <div class="attribution-card"><h3>CARTO / OpenTopoMap</h3><div class="applies">Capas que los utilicen</div><p>Sus respectivas atribuciones se aplican cuando una capa basada en estos servicios está disponible.</p><p><a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a> · <a href="https://opentopomap.org/about" target="_blank" rel="noopener">OpenTopoMap</a></p></div>
+    <div class="attribution-card"><h3>Project OSRM</h3><div class="applies">Cálculo de rutas online del editor</div><p>Servicio de enrutado basado en datos de OpenStreetMap.</p><p><a href="https://project-osrm.org/" target="_blank" rel="noopener">project-osrm.org</a></p></div>`
   ),
 };
 

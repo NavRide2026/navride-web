@@ -22,7 +22,7 @@ export type ProductFeature = {
   id: string;
   name: string;
   publicDescription: string;
-  platforms: ("app" | "web" | "android_auto")[];
+  platforms: ("app" | "web")[];
   status: ProductStatus;
   releaseChannel: string;
   currentVersion?: string;
@@ -43,9 +43,9 @@ export const PRODUCT_FEATURES: ProductFeature[] = (
   (registryJson as { features: ProductFeature[] }).features ?? []
 ).map((f) => ({
   ...f,
-  platforms: f.platforms.map((p) =>
-    p === "android_auto" ? "android_auto" : p,
-  ) as ProductFeature["platforms"],
+  platforms: f.platforms.filter(
+    (p): p is "app" | "web" => p === "app" || p === "web",
+  ),
 }));
 
 /** Progreso 0–100 derivado de milestones PASS / total ponderables. */

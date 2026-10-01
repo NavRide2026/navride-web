@@ -1,3 +1,5 @@
+import "server-only";
+
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /** Cliente admin (solo servidor). Omite RLS — usar solo tras validar sesión del usuario. */

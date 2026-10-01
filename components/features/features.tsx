@@ -1,61 +1,28 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { FEATURES } from "@/lib/site/constants";
 import { SectionHeading } from "@/components/site/section-heading";
-import { Clock, Map, Route, Wifi, Mic } from "lucide-react";
+import { Map, Route, Wifi, Mic } from "lucide-react";
 
 const ICONS = [Route, Map, Wifi, Mic];
 
 export default function Features() {
   return (
-    <section className="px-4 md:px-8 py-16 md:py-24 border-t border-white/5">
-      <div className="max-w-6xl mx-auto">
-        <SectionHeading
-          eyebrow="Funcionalidades verificadas"
-          title="Lo que NavRide hace hoy"
-          description="Solo funciones existentes en la app beta. Sin promesas de marketing."
-        />
-
-        <div className="grid sm:grid-cols-2 gap-4 md:gap-6">
-          {FEATURES.map((feature, i) => {
-            const Icon = ICONS[i] ?? Route;
-            return (
-              <article
-                key={feature.title}
-                className="rounded-2xl border border-white/10 bg-[#101114] p-6 hover:border-[#FF5A1F]/20 transition-colors"
-              >
-                <div className="w-10 h-10 rounded-xl bg-[#1C1C1E] flex items-center justify-center mb-4">
-                  <Icon className="text-[#FF5A1F]" size={20} />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">
-                  {feature.title}
-                </h3>
-                {feature.title === "Modo Rally" && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-medium text-amber-400 mb-3">
-                    <Clock className="h-3 w-3" />
-                    Próximamente · Solo Plan Pilot
-                  </span>
-                )}
-                <p className="text-white/60 text-sm leading-relaxed">
-                  {feature.description}
-                </p>
-              </article>
-            );
+    <section className="border-t border-white/5 px-4 py-16 md:px-8 md:py-24">
+      <div className="mx-auto max-w-6xl">
+        <SectionHeading eyebrow="Funciones" title="Lo esencial para tus rutas" description="Planifica, importa y sigue recorridos GPX desde la app y la web." />
+        <div className="grid gap-4 sm:grid-cols-2 md:gap-6">
+          {FEATURES.map((feature, index) => {
+            const Icon = ICONS[index] ?? Route;
+            return <article key={feature.title} className="min-w-0 rounded-2xl border border-white/10 bg-[#101114] p-5 transition-colors hover:border-[#FF8500]/30 sm:p-6">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[#1C1C1E]"><Icon className="text-[#FF8500]" size={21} /></div>
+              <h3 className="mb-2 text-lg font-semibold text-white">{feature.title}</h3>
+              <p className="text-sm leading-relaxed text-white/60">{feature.description}</p>
+            </article>;
           })}
         </div>
-
-        <div className="mt-12 rounded-2xl border border-[#35C759]/20 bg-[#35C759]/5 p-6 md:p-8">
-          <p className="text-white/80 text-sm md:text-base leading-relaxed">
-            <strong className="text-[#35C759]">Filosofía:</strong> datos en el
-            dispositivo, sin cuentas en servidor NavRide. Approach online hasta
-            el inicio del GPX cuando hay conexión. Mapas offline con Pilot
-            (.mbtiles o preparación de corredor).
-          </p>
-          <Link
-            href="/producto"
-            className="inline-block mt-4 text-[#FF5A1F] text-sm font-medium hover:underline"
-          >
-            Más sobre el producto →
-          </Link>
+        <div className="mt-12 rounded-2xl border border-[#8BEA00]/20 bg-[#8BEA00]/5 p-6 md:p-8">
+          <p className="text-sm leading-relaxed text-white/80 md:text-base"><strong className="text-[#8BEA00]">Mapas sin conexión:</strong> descarga previamente la zona o ruta compatible para poder consultar el mapa cuando no tengas cobertura.</p>
+          <Link href="/producto" className="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-[#FF8500] hover:underline">Más información sobre el producto →</Link>
         </div>
       </div>
     </section>

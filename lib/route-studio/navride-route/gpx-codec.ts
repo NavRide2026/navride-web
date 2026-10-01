@@ -3,12 +3,12 @@ import {
   type NavRideRoute,
   parseNavRideRoute,
   routeToJson,
-} from "./types.ts";
+} from "./types";
 import {
   ROUTE_SCHEMA_VERSION,
   type RouteCapsule,
   parseRouteCapsule,
-} from "./route-capsule.ts";
+} from "./route-capsule";
 
 export const NAVRIDE_GPX_NS = "https://navride.app/ns/gpx/v1";
 export { ROUTE_SCHEMA_VERSION, parseRouteCapsule };
@@ -251,8 +251,8 @@ export function parseExtensionsXml(xml: string): NavRideRoute | null {
   }
 }
 
-function extractWaypointsAsCues(text: string): import("./types.ts").NavRideCue[] {
-  const cues: import("./types.ts").NavRideCue[] = [];
+function extractWaypointsAsCues(text: string): import("./types").NavRideCue[] {
+  const cues: import("./types").NavRideCue[] = [];
   const re = /<wpt\b([^>]*)>([\s\S]*?)<\/wpt>/gi;
   let m: RegExpExecArray | null;
   let i = 0;
@@ -266,7 +266,7 @@ function extractWaypointsAsCues(text: string): import("./types.ts").NavRideCue[]
     const descM = body.match(/<desc[^>]*>([\s\S]*?)<\/desc>/i);
     const typeM = body.match(/<type[^>]*>([\s\S]*?)<\/type>/i);
     const typeRaw = (typeM?.[1] ?? "").trim().toLowerCase();
-    let severity: import("./types.ts").NavRideCueSeverity = "attention";
+    let severity: import("./types").NavRideCueSeverity = "attention";
     if (typeRaw.includes("danger") || typeRaw.includes("peligro")) severity = "danger";
     else if (typeRaw.includes("caution") || typeRaw.includes("precauci")) severity = "caution";
     else if (typeRaw.includes("info")) severity = "info";

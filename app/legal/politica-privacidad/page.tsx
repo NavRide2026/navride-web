@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import PageLayout from "@/components/layout/page-layout";
 import { BRAND } from "@/lib/site/constants";
 import type { Metadata } from "next";
@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Política de privacidad",
   description:
-    "Política de privacidad NavRide — RGPD, Google Play Billing, datos locales y terceros (OSRM, mapas).",
+    "Política de privacidad de NavRide: datos tratados, finalidades, proveedores, conservación y derechos.",
   alternates: { canonical: "/legal/politica-privacidad" },
 };
 
@@ -23,7 +23,7 @@ export default function PoliticaPrivacidadPage() {
 
         <header className="mb-10">
           <p className="text-[#FF5A1F] text-sm font-semibold tracking-widest uppercase mb-3">
-            RGPD · Google Play
+            Privacidad
           </p>
           <h1 className="text-3xl md:text-4xl font-bold text-white">
             Política de privacidad
@@ -36,7 +36,7 @@ export default function PoliticaPrivacidadPage() {
         <div className="space-y-10 text-white/70 text-sm leading-relaxed">
           <section>
             <h2 className="text-white font-semibold text-lg mb-3">
-              Responsable del tratamiento
+              Responsable
             </h2>
             <p>
               <strong className="text-white">{BRAND.holderName}</strong>
@@ -54,339 +54,157 @@ export default function PoliticaPrivacidadPage() {
 
           <section>
             <h2 className="text-white font-semibold text-lg mb-3">
-              1. Ámbito
+              1. Qué datos tratamos
             </h2>
-            <p>
-              NavRide es navegación GPS offroad con rutas GPX, mapas
-              offline/online y suscripción <strong>NavRide Adventure</strong> vía
-              Google Play. Puede usarse con cuenta cloud opcional (Supabase) para
-              sincronizar rutas y alertas. La navegación GPS no requiere
-              telemetría publicitaria.
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                <strong className="text-white">Ubicación:</strong> posición,
+                velocidad y rumbo necesarios para mostrar tu ubicación y prestar
+                la navegación. Durante una navegación iniciada por ti, la
+                ubicación puede seguir utilizándose con la pantalla apagada o la
+                app minimizada mediante una notificación persistente de Android.
+              </li>
+              <li>
+                <strong className="text-white">Cuenta y rutas:</strong> si
+                decides iniciar sesión, tratamos los datos de cuenta y las rutas
+                que guardes o sincronices.
+              </li>
+              <li>
+                <strong className="text-white">Voz:</strong> si activas
+                funciones de voz, el micrófono se utiliza únicamente mientras
+                la función lo necesita. El tratamiento puede depender del
+                servicio de reconocimiento de voz configurado en Android.
+              </li>
+              <li>
+                <strong className="text-white">Suscripción:</strong> recibimos
+                de Google Play la información necesaria para comprobar el estado
+                de una compra o suscripción. NavRide no recibe ni almacena los
+                datos de tu tarjeta.
+              </li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-white font-semibold text-lg mb-3">
+              2. Para qué usamos los datos
+            </h2>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>Prestar la navegación y las funciones que solicites.</li>
+              <li>Guardar y sincronizar rutas cuando utilizas una cuenta.</li>
+              <li>Gestionar acceso a funciones asociadas a tu plan.</li>
+              <li>Atender solicitudes de soporte, privacidad o eliminación.</li>
+            </ul>
+            <p className="mt-3">
+              La base jurídica es la prestación del servicio solicitado y, para
+              funciones opcionales que lo requieran, tu consentimiento. Cuando
+              exista una obligación legal aplicable, el tratamiento podrá
+              realizarse para cumplirla.
             </p>
           </section>
 
           <section>
             <h2 className="text-white font-semibold text-lg mb-3">
-              2. Datos que tratamos
+              3. Servicios externos
             </h2>
-            <div className="space-y-4">
-              <div>
-                <p className="text-white font-medium mb-1">a) Ubicación GPS</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>
-                    Coordenadas, velocidad y rumbo durante la navegación GPS.
-                  </li>
-                  <li>
-                    <strong>Android:</strong> permisos{" "}
-                    <code>ACCESS_FINE_LOCATION</code> /{" "}
-                    <code>ACCESS_COARSE_LOCATION</code> (ubicación mientras usas
-                    la app). Durante navegación activa, un{" "}
-                    <strong>servicio en primer plano</strong> (
-                    <code>FOREGROUND_SERVICE</code> /{" "}
-                    <code>FOREGROUND_SERVICE_LOCATION</code>) con notificación
-                    persistente («Navegación activa») mantiene el GPS si
-                    minimizas la app o apagas la pantalla.
-                  </li>
-                  <li>
-                    NavRide <strong>no</strong> declara ni solicita{" "}
-                    <code>ACCESS_BACKGROUND_LOCATION</code> (permiso de
-                    ubicación en segundo plano del sistema).
-                  </li>
-                  <li>
-                    Procesado en el dispositivo. NavRide no envía tu posición en
-                    tiempo real a servidores con fines publicitarios.
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <p className="text-white font-medium mb-1">
-                  b) Rutas GPX y grabaciones
-                </p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Almacenamiento local en tu dispositivo.</li>
-                  <li>
-                    Si inicias sesión y sincronizas: copia en Supabase (
-                    <code>gpx_tracks</code> / <code>gpx_routes</code> / Storage{" "}
-                    <code>gpx</code>) asociada a tu usuario.
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <p className="text-white font-medium mb-1">
-                  b2) Alertas comunitarias (cuenta)
-                </p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>
-                    Con sesión: tipo de alerta + coordenadas precisas (+ id de
-                    autor en backend). Visibles a otros usuarios como avisos en
-                    mapa.
-                  </li>
-                  <li>
-                    La navegación local no envía tu posición continuamente a
-                    Supabase.
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <p className="text-white font-medium mb-1">
-                  c) Preferencias y premium
-                </p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>
-                    Ajustes, plan Free/Pilot, trial y consentimientos —
-                    almacenamiento local.
-                  </li>
-                  <li>
-                    Confirmación de suscripción vía Google Play Billing (SKU
-                    navride_adventure_monthly).
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <p className="text-white font-medium mb-1">
-                  d) OSRM (requiere conexión)
-                </p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>
-                    <strong>Cuándo:</strong> importación GPX con adherencia
-                    viaria y ruta de aproximación al track.
-                  </li>
-                  <li>
-                    <strong>Qué:</strong> coordenadas muestreadas del track o
-                    waypoints de ruta.
-                  </li>
-                  <li>
-                    <strong>Para qué:</strong> map matching y aproximación sobre
-                    red viaria.
-                  </li>
-                  <li>
-                    <strong>Servicio:</strong> router.project-osrm.org (público).
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <p className="text-white font-medium mb-1">e) Mapas online</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>
-                    App Beta: estilos/tiles OpenFreeMap (MapLibre). Política:{" "}
-                    <a
-                      href="https://openfreemap.org/privacy/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[#FF5A1F] hover:underline"
-                    >
-                      openfreemap.org/privacy
-                    </a>
-                    .
-                  </li>
-                  <li>
-                    Web / builds legacy pueden usar también tiles CARTO /
-                    OpenTopoMap (datos © OpenStreetMap contributors).
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <p className="text-white font-medium mb-1">
-                  e2) Overpass (grafo vial, app)
-                </p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>
-                    Consultas HTTP a instancias Overpass con bbox alrededor de
-                    la posición para construir grafo vial local.
-                  </li>
-                  <li>
-                    Incluye coordenadas en la query; la IP viaja a nivel de red.
-                    Retención del operador: no hay política de retención
-                    específica publicada por Overpass pública (FOSSGIS / mirrors)
-                    — se documenta como no publicada, sin inventar plazos.
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <p className="text-white font-medium mb-1">
-                  f) Open-Meteo (opcional)
-                </p>
-                <ul className="list-disc pl-5">
-                  <li>
-                    Si activas alertas climáticas: ubicación aproximada a
-                    api.open-meteo.com.
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <p className="text-white font-medium mb-1">
-                  g) Voz / micrófono (opcional)
-                </p>
-                <ul className="list-disc pl-5">
-                  <li>
-                    Motor de voz del sistema Android si activas comandos por voz.
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <p className="text-white font-medium mb-1">
-                  h) Logs técnicos locales
-                </p>
-                <ul className="list-disc pl-5">
-                  <li>
-                    Errores y eventos en archivos locales; no se suben a NavRide.
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-white font-semibold text-lg mb-3">
-              3. Datos que NO recogemos
-            </h2>
-            <ul className="list-disc pl-5 space-y-1">
+            <p className="mb-3">
+              NavRide utiliza proveedores únicamente cuando son necesarios para
+              prestar una función concreta:
+            </p>
+            <ul className="list-disc pl-5 space-y-2">
               <li>
-                Sin publicidad, analytics de terceros ni perfiles en servidor
-                NavRide.
-              </li>
-              <li>Sin venta de datos personales.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-white font-semibold text-lg mb-3">
-              4. Permisos Android
-            </h2>
-            <ul className="list-disc pl-5 space-y-1">
-              <li>
-                <strong>Ubicación</strong> (ACCESS_FINE_LOCATION /
-                ACCESS_COARSE_LOCATION): navegación GPS mientras usas la app.
+                <strong className="text-white">Supabase:</strong> autenticación,
+                perfil y sincronización de rutas cuando utilizas una cuenta.
               </li>
               <li>
-                <strong>Servicio en primer plano</strong> (FOREGROUND_SERVICE /
-                FOREGROUND_SERVICE_LOCATION): GPS con pantalla apagada o app
-                minimizada durante navegación activa (notificación persistente).
-                No se usa ACCESS_BACKGROUND_LOCATION.
+                <strong className="text-white">Google Play:</strong>
+                distribución, compras y suscripciones.
               </li>
               <li>
-                <strong>Notificaciones</strong> (POST_NOTIFICATIONS): aviso del
-                servicio de navegación.
+                <strong className="text-white">OSRM:</strong> cálculo de rutas
+                en funciones online del editor web; las coordenadas necesarias
+                para calcular la ruta se envían al servicio.
               </li>
               <li>
-                <strong>Internet</strong> y estado de red: mapas online, OSRM,
-                Open-Meteo, Google Play Billing.
+                <strong className="text-white">
+                  OpenFreeMap, OpenMapTiles y proveedores cartográficos:
+                </strong>{" "}
+                carga de mapas online. Como en cualquier petición web, el
+                proveedor puede recibir información técnica de conexión y del
+                área de mapa solicitada.
               </li>
               <li>
-                <strong>Micrófono</strong> (RECORD_AUDIO): solicitado en runtime
-                si activas comandos por voz.
-              </li>
-              <li>
-                <strong>Facturación</strong> (com.android.vending.BILLING):
-                suscripción NavRide Adventure vía Google Play.
-              </li>
-              <li>
-                <strong>Almacenamiento legacy</strong> (READ_EXTERNAL_STORAGE,
-                maxSdk 32): importar GPX en Android antiguos.
-              </li>
-              <li>
-                <strong>Optimización batería</strong>{" "}
-                (REQUEST_IGNORE_BATTERY_OPTIMIZATIONS): opcional para estabilidad
-                GPS en algunos dispositivos.
+                <strong className="text-white">Open-Meteo:</strong> solo si
+                utilizas una función meteorológica disponible en tu versión.
               </li>
             </ul>
+            <p className="mt-3">
+              NavRide no vende datos personales ni utiliza la ubicación para
+              publicidad.
+            </p>
           </section>
 
           <section>
             <h2 className="text-white font-semibold text-lg mb-3">
-              5. Terceros
-            </h2>
-            <ul className="list-disc pl-5 space-y-1">
-              <li>
-                <strong>Google Play:</strong> pagos y suscripciones.{" "}
-                <a
-                  href="https://policies.google.com/privacy"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[#FF5A1F] hover:underline"
-                >
-                  Política de Google
-                </a>
-              </li>
-              <li>
-                <strong>Supabase:</strong> autenticación y datos cloud opcionales
-                del usuario (perfil, rutas GPX, alertas). Proyecto técnico
-                documentado en la app Beta.
-              </li>
-              <li>
-                <strong>OpenFreeMap:</strong> tiles de mapa (app Beta).{" "}
-                <a
-                  href="https://openfreemap.org/privacy/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[#FF5A1F] hover:underline"
-                >
-                  Privacidad
-                </a>
-              </li>
-              <li>
-                <strong>Overpass API / OpenStreetMap:</strong> consultas de mapa
-                vial (app). Operadores terceros; retención específica no
-                publicada de forma uniforme.
-              </li>
-              <li>
-                <strong>OSRM / OpenStreetMap:</strong> enrutado en flujos web /
-                legacy cuando aplique.
-              </li>
-              <li>
-                <strong>Open-Meteo:</strong> clima opcional (si la función está
-                activa en esa build).
-              </li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-white font-semibold text-lg mb-3">
-              6. Retención y eliminación
+              4. Conservación y eliminación
             </h2>
             <p>
-              Datos locales: Ajustes → Eliminar / desinstalación. Cuenta y datos
-              cloud: Ajustes → Eliminar cuenta (app), o la ruta web{" "}
+              Los datos almacenados únicamente en tu dispositivo permanecen
+              hasta que los eliminas o desinstalas la aplicación. Los datos
+              asociados a una cuenta se conservan mientras la cuenta esté
+              activa o sean necesarios para prestar el servicio y se eliminan
+              cuando solicitas el borrado, salvo la información que deba
+              conservarse durante el tiempo exigido por una obligación legal.
+            </p>
+            <p className="mt-3">
+              Puedes solicitar la eliminación desde la app o desde{" "}
               <Link
                 href="/delete-account"
                 className="text-[#FF5A1F] hover:underline"
               >
-                /delete-account
-              </Link>{" "}
-              (reautenticación + borrado técnico cuando el backend esté
-              desplegado), o email {BRAND.supportEmail}. Retención automática en
-              producto: no definida (UNDEFINED) salvo eliminación por el usuario.
-              Eliminar datos en NavRide no cancela la suscripción de Google Play.
+                Eliminar cuenta
+              </Link>
+              . Eliminar la cuenta de NavRide no cancela automáticamente una
+              suscripción activa de Google Play.
             </p>
           </section>
 
           <section>
             <h2 className="text-white font-semibold text-lg mb-3">
-              7. Menores
+              5. Seguridad
             </h2>
-            <p>No destinada a menores de 14 años.</p>
+            <p>
+              Las comunicaciones con los servicios online se realizan mediante
+              conexiones cifradas. El acceso a los datos de cuenta se limita a
+              los servicios y usuarios autorizados para prestar las funciones
+              correspondientes.
+            </p>
           </section>
 
           <section>
             <h2 className="text-white font-semibold text-lg mb-3">
-              8. Tus derechos (RGPD)
+              6. Tus derechos
             </h2>
             <p>
-              Contacto:{" "}
+              Puedes solicitar acceso, rectificación, supresión, limitación,
+              portabilidad u oposición cuando corresponda, así como retirar un
+              consentimiento previamente otorgado. Para ejercerlos, escribe a{" "}
               <a
                 href={`mailto:${BRAND.supportEmail}`}
                 className="text-[#FF5A1F] hover:underline"
               >
                 {BRAND.supportEmail}
               </a>
-              . Reclamación:{" "}
+              .
+            </p>
+            <p className="mt-3">
+              También puedes presentar una reclamación ante la{" "}
               <a
                 href="https://www.aepd.es"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[#FF5A1F] hover:underline"
               >
-                AEPD
+                Agencia Española de Protección de Datos
               </a>
               .
             </p>
@@ -394,11 +212,19 @@ export default function PoliticaPrivacidadPage() {
 
           <section>
             <h2 className="text-white font-semibold text-lg mb-3">
-              9. Actualizaciones
+              7. Menores
+            </h2>
+            <p>NavRide no está dirigida a menores de 14 años.</p>
+          </section>
+
+          <section>
+            <h2 className="text-white font-semibold text-lg mb-3">
+              8. Cambios en esta política
             </h2>
             <p>
-              Versión vigente en la app (Ajustes → Legal) y en esta URL pública
-              para Google Play: {BRAND.privacyPolicyPublicUrl}
+              Esta página contiene la versión vigente de la política de
+              privacidad. Si realizamos cambios relevantes, actualizaremos la
+              fecha indicada al inicio.
             </p>
           </section>
         </div>

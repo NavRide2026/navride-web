@@ -1,12 +1,13 @@
 import type { MetadataRoute } from "next";
-import { PUBLIC_ROUTES, SITE_URL } from "@/lib/site/constants";
+import { PUBLIC_ROUTES, SITE_URL, BRAND } from "@/lib/site/constants";
+
+const excluded = new Set(["/noticias", "/login", "/perfil", "/mi-garaje", "/mis-rutas", "/editor-gpx", "/delete-account"]);
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date();
-  return PUBLIC_ROUTES.map((route) => ({
+  return PUBLIC_ROUTES.filter((route) => !excluded.has(route)).map((route) => ({
     url: `${SITE_URL}${route}`,
-    lastModified: now,
+    lastModified: new Date(BRAND.lastUpdated),
     changeFrequency: route === "/" ? "weekly" : "monthly",
-    priority: route === "/" ? 1 : route.includes("legal") ? 0.8 : 0.7,
+    priority: route === "/" ? 1 : route.includes("legal") ? 0.6 : 0.7,
   }));
 }

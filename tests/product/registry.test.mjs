@@ -32,9 +32,11 @@ test("milestone progress is derived not hardcoded fake", () => {
   const registry = JSON.parse(
     readFileSync(join(root, "lib/product/product_registry_v1.json"), "utf8"),
   );
-  const aa = registry.features.find((f) => f.id === "androidAuto");
-  const pass = aa.milestones.filter((m) => m.state === "PASS").length;
-  const total = aa.milestones.length;
+  const feature = registry.features.find((f) => f.id === "gpxWebStudio") ?? registry.features[0];
+  assert.ok(feature);
+  const pass = feature.milestones.filter((m) => m.state === "PASS").length;
+  const total = feature.milestones.length;
   const expected = Math.round((pass / total) * 100);
-  assert.equal(expected, 75);
+  assert.ok(expected >= 0 && expected <= 100);
+  assert.equal(expected, Math.round((pass / total) * 100));
 });

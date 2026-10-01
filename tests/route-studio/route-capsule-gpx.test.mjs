@@ -46,8 +46,8 @@ describe("route capsule contract constants", () => {
       "utf8",
     );
     assert.match(src, /capsuleRef/);
-    assert.match(src, /exportGpx\([^)]*capsuleRef\.current/);
-    assert.match(src, /parsed\.capsule/);
+    assert.match(src, /capsule:\s*capsuleRef\.current/);
+    assert.match(src, /imported\.capsule/);
   });
 });
 

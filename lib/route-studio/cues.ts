@@ -3,7 +3,7 @@ import {
   type NavRideCueActivation,
   type NavRideCueSeverity,
   CUE_SEVERITIES,
-} from "./navride-route/types.ts";
+} from "./navride-route/types";
 
 export const CUE_SEVERITY_LABELS_ES: Record<NavRideCueSeverity, string> = {
   info: "Info",

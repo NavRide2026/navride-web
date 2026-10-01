@@ -18,7 +18,7 @@ export default function NovedadesPage() {
         <SectionHeading
           eyebrow="NavRide"
           title="Novedades"
-          description="Solo anuncios públicos aprobados. Sin detalles internos de desarrollo."
+          description="Cambios y mejoras relevantes de NavRide."
         />
 
         <div className="space-y-6">
@@ -39,9 +39,7 @@ export default function NovedadesPage() {
                     {p}
                   </span>
                 ))}
-                {e.version && (
-                  <span className="text-white/40">v{e.version}</span>
-                )}
+                
               </div>
             </article>
           ))}

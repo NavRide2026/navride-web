@@ -1,0 +1,65 @@
+.hero-brand-integrated {
+  position: relative;
+  display: flex;
+  min-height: 360px;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  overflow: visible;
+  padding: 2rem 1rem;
+}
+
+.hero-brand-halo {
+  position: absolute;
+  z-index: 0;
+  width: min(88%, 480px);
+  aspect-ratio: 1.9;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, rgba(255,133,0,.09), transparent 70%);
+  filter: blur(30px);
+  opacity: .72;
+}
+
+.hero-wordmark {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: min(118%, 690px);
+  height: auto;
+  overflow: visible;
+}
+
+.hero-wordmark-text {
+  font-family: "Arial Black", Impact, "Arial Narrow", sans-serif;
+  font-size: 148px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: -12px;
+}
+
+.hero-brand-tagline {
+  position: relative;
+  z-index: 2;
+  margin-top: .6rem;
+  color: rgba(255,255,255,.52);
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .22em;
+  text-align: center;
+}
+
+@media (max-width: 1023px) {
+  .hero-brand-integrated {
+    min-height: 270px;
+    padding-block: 1rem 2rem;
+  }
+
+  .hero-wordmark { width: min(105%, 650px); }
+}
+
+@media (max-width: 520px) {
+  .hero-brand-integrated { min-height: 220px; }
+  .hero-wordmark { width: 112%; }
+  .hero-brand-tagline { margin-top: .35rem; font-size: .55rem; letter-spacing: .13em; }
+}

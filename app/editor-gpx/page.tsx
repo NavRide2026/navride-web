@@ -1,14 +1,15 @@
 export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
-export const revalidate = 0;
 
-import GpxEditor from "@/components/gpx/GpxEditor";
+import GpxEditorSafe from "@/components/gpx/GpxEditorSafe";
+import RouteStudioIntro from "@/components/route-studio/route-studio-intro";
+import RouteStudioCopy from "@/components/route-studio/route-studio-copy";
 import type { Metadata } from "next";
 import { isNavRideAppEmbed } from "@/lib/route-studio/navride-editor-bridge";
+import styles from "./editor.module.css";
 
 export const metadata: Metadata = {
-  title: "Editor GPX NavRide",
-  description: "Editor GPX NavRide: mapa primero, perfiles coche/moto/bici/caminar, Route Doctor.",
+  title: "Editor de rutas GPX",
+  description: "Crea rutas GPX por modo de transporte, deshaz o rehace cambios y sincroniza la ruta con la aplicación NavRide.",
 };
 
 type PageProps = {
@@ -23,15 +24,15 @@ export default async function EditorGpxPage({ searchParams }: PageProps) {
 
   return (
     <div
-      className={
-        embedNavRideApp
-          ? "fixed inset-0 z-50 bg-[#050608] flex flex-col h-[100dvh] max-h-[100dvh] overflow-hidden"
-          : "fixed inset-0 z-50 bg-[#050608] flex flex-col"
-      }
+      className={`${styles.editorPage} fixed inset-0 z-[120] flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#050608]`}
       data-navride-embed={embedNavRideApp ? "navride-app" : undefined}
-      data-editor-network="osm-master-editor-rebuild"
+      data-route-studio="true"
     >
-      <GpxEditor embedNavRideApp={embedNavRideApp} />
+      <div className="min-h-0 flex-1">
+        <GpxEditorSafe embedNavRideApp={embedNavRideApp} />
+      </div>
+      <RouteStudioIntro enabled={!embedNavRideApp} />
+      <RouteStudioCopy />
     </div>
   );
 }

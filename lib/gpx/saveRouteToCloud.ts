@@ -211,7 +211,10 @@ export function buildRouteDeepLinks(routeId: string) {
   };
 }
 
-/** Abre NavRide en móvil (scheme + intent con fallback HTTPS). */
+/** Abre NavRide desde una acción explícita del usuario.
+ * Primero usa el scheme registrado por la app; en Android, si el navegador no
+ * lo entrega a NavRide, prueba después el Intent explícito del paquete.
+ */
 export function tryOpenNavRideApp(routeId: string): boolean {
   if (typeof window === "undefined") return false;
   const links = buildRouteDeepLinks(routeId);
@@ -221,21 +224,21 @@ export function tryOpenNavRideApp(routeId: string): boolean {
   if (!isMobile) return false;
 
   if (/Android/i.test(ua)) {
-    window.location.href = links.androidIntent;
     window.setTimeout(() => {
       if (document.visibilityState === "visible") {
-        window.location.href = links.appScheme;
+        window.location.href = links.androidIntent;
       }
-    }, 1200);
+    }, 700);
+    window.location.href = links.appScheme;
     return true;
   }
 
-  window.location.href = links.appScheme;
   window.setTimeout(() => {
     if (document.visibilityState === "visible") {
       window.location.href = links.https;
     }
-  }, 1800);
+  }, 1500);
+  window.location.href = links.appScheme;
   return true;
 }
 

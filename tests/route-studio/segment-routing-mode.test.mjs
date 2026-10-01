@@ -58,10 +58,10 @@ describe("segment-routing-mode", () => {
     ]));
   });
 
-  it("FOLLOW_TRAIL uses bike OSRM proxy for moto/car", () => {
-    assert.equal(osrmProfileForSegment("moto", "FOLLOW_TRAIL"), "bike");
+  it("FOLLOW_TRAIL does not fall through to public OSRM", () => {
+    assert.equal(osrmProfileForSegment("moto", "FOLLOW_TRAIL"), "none");
     assert.equal(osrmProfileForSegment("car", "FOLLOW_ROAD"), "driving");
-    assert.equal(osrmProfileForSegment("walk", "FOLLOW_TRAIL"), "foot");
+    assert.equal(osrmProfileForSegment("walk", "FOLLOW_TRAIL"), "none");
     assert.equal(osrmProfileForSegment("bike", "MANUAL_STRAIGHT"), "none");
   });
 });
