@@ -165,16 +165,24 @@ export async function snapClickToRoute(
   click: LngLat,
   prev: LngLat | null,
   mode: TransportMode,
-  _maxSnapM = 25,
+  maxSnapM = 25,
   segmentMode: RouteSegmentMode = "FOLLOW_ROAD",
 ): Promise<{ snapped: LngLat; routeSegment: LngLat[] | null; rejectedFar: boolean }> {
   if (!prev || segmentMode === "MANUAL_STRAIGHT") {
     return { snapped: click, routeSegment: null, rejectedFar: false };
   }
   const preview = await routeWaypoints([prev, click], mode, segmentMode);
+  if (!preview.ok || preview.points.length < 2) {
+    return { snapped: click, routeSegment: null, rejectedFar: false };
+  }
+  const last = preview.points[preview.points.length - 1];
+  const distM = haversineKm(click, last) * 1000;
+  if (distM > maxSnapM) {
+    return { snapped: click, routeSegment: null, rejectedFar: true };
+  }
   return {
-    snapped: click,
-    routeSegment: preview.ok ? preview.points : null,
+    snapped: last,
+    routeSegment: preview.points,
     rejectedFar: false,
   };
 }

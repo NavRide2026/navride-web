@@ -1,7 +1,7 @@
 import {
   parseCapsuleXml,
   parseExtensionsXml,
-} from "../route-studio/navride-route/gpx-codec.ts";
+} from "../route-studio/navride-route/gpx-codec";
 import {
   emptyDocument,
   uid,
@@ -10,7 +10,7 @@ import {
   type GpxSegment,
   type GpxTrack,
   type GpxWaypoint,
-} from "./types.ts";
+} from "./types";
 
 export type ParseResult = {
   doc: GpxDocument;

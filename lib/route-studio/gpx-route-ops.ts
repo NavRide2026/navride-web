@@ -1,4 +1,4 @@
-import type { LngLat } from "./routing.ts";
+import type { LngLat } from "./routing";
 
 export function reverseLngLats(pts: LngLat[]): LngLat[] {
   if (pts.length < 2) return [...pts];

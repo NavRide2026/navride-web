@@ -56,6 +56,7 @@ import { GpxPointContextMenu, type PointMenuAction } from "@/components/gpx/GpxP
 import { GpxWayInspector, propsToWayInspector, type WayInspectorData } from "@/components/gpx/GpxWayInspector";
 import { GpxRouteAnalysisPanel } from "@/components/gpx/GpxRouteAnalysisPanel";
 import { GpxAlternativesPanel } from "@/components/gpx/GpxAlternativesPanel";
+import { GpxStudioSidePanel } from "@/components/gpx/GpxStudioSidePanel";
 import { analyzeRouteMetrics } from "@/lib/gpx-editor/route-analysis";
 import { analyzeRouteHealth } from "@/lib/route-studio/route-health";
 import {
@@ -67,9 +68,11 @@ import {
   useNavRideAppBridge,
 } from "@/lib/gpx-editor/app-bridge-controller";
 import {
+  dismissEditorDraft,
+  restoreEditorDraft,
   useEditorDraftAutosave,
 } from "@/lib/gpx-editor/use-editor-draft";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import {
   tryOpenNavRideApp,
   buildRouteDeepLinks,
@@ -120,10 +123,10 @@ import {
 
 // ─── Map styles ───────────────────────────────────────────────────────────────
 const MAP_STYLES: { id: StyleId; label: string; url: string | object }[] = [
-  { id: "liberty",   label: "Carretera",      url: EDITOR_BASE_STYLE_URLS.liberty  },
-  { id: "bright",    label: "Adventure",      url: EDITOR_BASE_STYLE_URLS.bright   },
-  { id: "positron",  label: "Topo / Offroad", url: EDITOR_BASE_STYLE_URLS.positron },
-  { id: "satellite", label: "Satélite",       url: buildSatelliteStyleSync()       },
+  { id: "liberty",   label: "Claro",     url: EDITOR_BASE_STYLE_URLS.liberty  },
+  { id: "bright",    label: "Contraste", url: EDITOR_BASE_STYLE_URLS.bright   },
+  { id: "positron",  label: "Suave",     url: EDITOR_BASE_STYLE_URLS.positron },
+  { id: "satellite", label: "Satélite",  url: buildSatelliteStyleSync()       },
 ];
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -187,6 +190,8 @@ export default function GpxEditor({
   const [wayInspector, setWayInspector] = useState<WayInspectorData | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [showAlternatives, setShowAlternatives] = useState(false);
+  const [inspectMode, setInspectMode] = useState(false);
+  const inspectModeRef = useRef(false);
 
   const [editorState, editorActions] = useGpxEditorStore(INIT_SEG);
   const {
@@ -205,6 +210,10 @@ export default function GpxEditor({
     editorMode,
     routeError,
     locating,
+    uploadMsg,
+    draftBanner,
+    sidebarCollapsed,
+    drawerOpen,
 
     activeWpt,
     trackWidth,
@@ -251,6 +260,8 @@ export default function GpxEditor({
     setDrawMode,
     setImportDialog,
 
+    setSidebarCollapsed,
+    setDrawerOpen,
     setStyleMenuOpen,
   } = editorActions;
   const gpxFileInputRef = useRef<HTMLInputElement>(null);
@@ -292,6 +303,7 @@ export default function GpxEditor({
   useEffect(() => { placeNotePendingRef.current = placeNotePending; }, [placeNotePending]);
   useEffect(() => { cueDraftMessageRef.current = cueDraftMessage; }, [cueDraftMessage]);
   useEffect(() => { cueDraftSeverityRef.current = cueDraftSeverity; }, [cueDraftSeverity]);
+  useEffect(() => { inspectModeRef.current = inspectMode; }, [inspectMode]);
 
   useEditorDraftAutosave({
     segments,
@@ -391,7 +403,7 @@ export default function GpxEditor({
           "nr-path",
           "nr-road-name",
         ].filter((id) => !!m.getLayer(id));
-        if (inspectLayers.length > 0) {
+        if (inspectModeRef.current && inspectLayers.length > 0) {
           const wayHits = m.queryRenderedFeatures(e.point, { layers: inspectLayers });
           if (wayHits[0]) {
             setWayInspector(
@@ -400,7 +412,10 @@ export default function GpxEditor({
                 wayHits[0].layer?.id,
               ),
             );
+          } else {
+            setWayInspector(null);
           }
+          return;
         }
 
         const { lng, lat } = e.lngLat;
@@ -556,35 +571,38 @@ export default function GpxEditor({
         const gen = ++routeGenerationRef.current;
         setRouting(true);
         setRouteError(null);
-        const routed = await routeForMode(activeSeg.waypoints, mode, segMode);
-        if (gen !== routeGenerationRef.current) return; // latest-wins
-        if (!routed.ok) {
-          setRouteError(
-            (routed.message ?? "Sin ruta en este control point.") +
-              " No se inventa geometría. Prueba LÍNEA DIRECTA.",
-          );
-        } else if (routed.absurd && editorModeRef.current === "advanced") {
-          setRouteError(routed.message ?? "Desvío absurdo detectado.");
+        try {
+          const routed = await routeForMode(activeSeg.waypoints, mode, segMode);
+          if (gen !== routeGenerationRef.current) return; // latest-wins
+          if (!routed.ok) {
+            setRouteError(
+              (routed.message ?? "Sin ruta en este control point.") +
+                " No se inventa geometría. Prueba LÍNEA DIRECTA.",
+            );
+          } else if (routed.absurd && editorModeRef.current === "advanced") {
+            setRouteError(routed.message ?? "Desvío absurdo detectado.");
+          }
+          setSegments(prev => {
+            if (gen !== routeGenerationRef.current) return prev;
+            const r = prev.map(s => s.id === aId ? {
+              ...s,
+              routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
+              routingFailed: !routed.ok,
+              absurdDetour: !!routed.absurd,
+              pathKind: "routed" as const,
+              routeSegmentMode: segMode,
+            } : s);
+            segsRef.current = r;
+            const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+            cuesRef.current = reproj;
+            setCues(reproj);
+            syncMap(r);
+            return r;
+          });
+          pushHist(segsRef.current);
+        } finally {
+          setRouting(false);
         }
-        setSegments(prev => {
-          if (gen !== routeGenerationRef.current) return prev;
-          const r = prev.map(s => s.id === aId ? {
-            ...s,
-            routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
-            routingFailed: !routed.ok,
-            absurdDetour: !!routed.absurd,
-            pathKind: "routed" as const,
-            routeSegmentMode: segMode,
-          } : s);
-          segsRef.current = r;
-          const reproj = reprojectCuesOnTrack(cuesRef.current, r);
-          cuesRef.current = reproj;
-          setCues(reproj);
-          syncMap(r);
-          return r;
-        });
-        pushHist(segsRef.current);
-        setRouting(false);
       });
 
       m.on("mousedown", LYR_POINTS, (e: MapLayerMouseEvent) => {
@@ -658,32 +676,35 @@ export default function GpxEditor({
         const sm = parseRouteSegmentMode(
           seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
         );
-        const routed = await routeForMode(seg.waypoints, transportModeRef.current, sm);
-        if (gen !== routeGenerationRef.current) return;
-        if (!routed.ok) {
-          setRouteError(
-            (routed.message ?? "Punto inalcanzable — no se dibuja línea recta."),
-          );
-        } else if (routed.absurd && editorModeRef.current === "advanced") {
-          setRouteError(routed.message ?? "Desvío absurdo detectado.");
+        try {
+          const routed = await routeForMode(seg.waypoints, transportModeRef.current, sm);
+          if (gen !== routeGenerationRef.current) return;
+          if (!routed.ok) {
+            setRouteError(
+              (routed.message ?? "Punto inalcanzable — no se dibuja línea recta."),
+            );
+          } else if (routed.absurd && editorModeRef.current === "advanced") {
+            setRouteError(routed.message ?? "Desvío absurdo detectado.");
+          }
+          setSegments(prev => {
+            if (gen !== routeGenerationRef.current) return prev;
+            const r = prev.map(s => s.id === di.segId ? {
+              ...s,
+              routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
+              routingFailed: !routed.ok,
+              absurdDetour: !!routed.absurd,
+            } : s);
+            segsRef.current = r;
+            const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+            cuesRef.current = reproj;
+            setCues(reproj);
+            syncMap(r);
+            pushHist(r);
+            return r;
+          });
+        } finally {
+          setRouting(false);
         }
-        setSegments(prev => {
-          if (gen !== routeGenerationRef.current) return prev;
-          const r = prev.map(s => s.id === di.segId ? {
-            ...s,
-            routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
-            routingFailed: !routed.ok,
-            absurdDetour: !!routed.absurd,
-          } : s);
-          segsRef.current = r;
-          const reproj = reprojectCuesOnTrack(cuesRef.current, r);
-          cuesRef.current = reproj;
-          setCues(reproj);
-          syncMap(r);
-          pushHist(r);
-          return r;
-        });
-        setRouting(false);
       });
 
       const openPointMenu = (segId: string, idx: number, clientX: number, clientY: number) => {
@@ -814,6 +835,7 @@ export default function GpxEditor({
   const handleTransportChange = useCallback((mode: TransportMode) => {
     setTransportMode(mode);
     transportModeRef.current = mode;
+    mapAdapterRef.current?.setTransportMode(mode);
     void rerouteAll(mode);
   }, [rerouteAll, setTransportMode]);
 
@@ -824,30 +846,33 @@ export default function GpxEditor({
       const generation = ++routeGenerationRef.current;
       setRouting(true);
       setRouteError(null);
-      const result = await rerouteActiveSegment({
-        segments: segsRef.current,
-        activeId: activeIdRef.current,
-        mode,
-        transportMode: transportModeRef.current,
-        editorMode: editorModeRef.current,
-        generation,
-        isCurrent: (value) => value === routeGenerationRef.current,
-      });
-      if (result.stale) return;
-      if (result.segments !== segsRef.current) {
-        segsRef.current = result.segments;
-        setSegments(result.segments);
-        const reproj = reprojectCuesOnTrack(
-          cuesRef.current,
-          result.segments,
-        );
-        cuesRef.current = reproj;
-        setCues(reproj);
-        syncMap(result.segments);
-        pushHist(result.segments);
+      try {
+        const result = await rerouteActiveSegment({
+          segments: segsRef.current,
+          activeId: activeIdRef.current,
+          mode,
+          transportMode: transportModeRef.current,
+          editorMode: editorModeRef.current,
+          generation,
+          isCurrent: (value) => value === routeGenerationRef.current,
+        });
+        if (result.stale) return;
+        if (result.segments !== segsRef.current) {
+          segsRef.current = result.segments;
+          setSegments(result.segments);
+          const reproj = reprojectCuesOnTrack(
+            cuesRef.current,
+            result.segments,
+          );
+          cuesRef.current = reproj;
+          setCues(reproj);
+          syncMap(result.segments);
+          pushHist(result.segments);
+        }
+        setRouteError(result.error);
+      } finally {
+        setRouting(false);
       }
-      setRouteError(result.error);
-      setRouting(false);
     },
     [
       pushHist,
@@ -1009,23 +1034,26 @@ export default function GpxEditor({
       const smDel = parseRouteSegmentMode(
         seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
       );
-      const routed = await routeForMode(seg.waypoints, transportModeRef.current, smDel);
-      if (gen !== routeGenerationRef.current) return;
-      if (!routed.ok) setRouteError(routed.message ?? "Punto inalcanzable.");
-      const r = upd.map(s => s.id === segId ? {
-        ...s,
-        routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
-        routingFailed: !routed.ok,
-        absurdDetour: !!routed.absurd,
-      } : s);
-      segsRef.current = r;
-      setSegments(r);
-      const reproj = reprojectCuesOnTrack(cuesRef.current, r);
-      cuesRef.current = reproj;
-      setCues(reproj);
-      syncMap(r, null);
-      pushHist(r);
-      setRouting(false);
+      try {
+        const routed = await routeForMode(seg.waypoints, transportModeRef.current, smDel);
+        if (gen !== routeGenerationRef.current) return;
+        if (!routed.ok) setRouteError(routed.message ?? "Punto inalcanzable.");
+        const r = upd.map(s => s.id === segId ? {
+          ...s,
+          routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
+          routingFailed: !routed.ok,
+          absurdDetour: !!routed.absurd,
+        } : s);
+        segsRef.current = r;
+        setSegments(r);
+        const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+        cuesRef.current = reproj;
+        setCues(reproj);
+        syncMap(r, null);
+        pushHist(r);
+      } finally {
+        setRouting(false);
+      }
     } else {
       syncMap(upd, null);
       pushHist(upd);
@@ -1066,19 +1094,22 @@ export default function GpxEditor({
       const smOrd = parseRouteSegmentMode(
         seg.routeSegmentMode ?? (seg.pathKind === "freehand" ? "MANUAL_STRAIGHT" : "FOLLOW_ROAD"),
       );
-      const routed = await routeForMode(seg.waypoints, transportModeRef.current, smOrd);
-      if (gen !== routeGenerationRef.current) return;
-      const r = upd.map(s => s.id === segId ? {
-        ...s,
-        routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
-        routingFailed: !routed.ok,
-        absurdDetour: !!routed.absurd,
-      } : s);
-      segsRef.current = r;
-      setSegments(r);
-      syncMap(r);
-      pushHist(r);
-      setRouting(false);
+      try {
+        const routed = await routeForMode(seg.waypoints, transportModeRef.current, smOrd);
+        if (gen !== routeGenerationRef.current) return;
+        const r = upd.map(s => s.id === segId ? {
+          ...s,
+          routePoints: routed.ok ? routed.points : (s.routePoints.length >= 2 ? s.routePoints : []),
+          routingFailed: !routed.ok,
+          absurdDetour: !!routed.absurd,
+        } : s);
+        segsRef.current = r;
+        setSegments(r);
+        syncMap(r);
+        pushHist(r);
+      } finally {
+        setRouting(false);
+      }
     } else {
       setSegments(upd);
       syncMap(upd);
@@ -1312,27 +1343,30 @@ export default function GpxEditor({
     setRouting(true);
     const gen = ++routeGenerationRef.current;
     const sm = parseRouteSegmentMode(seg.routeSegmentMode ?? "FOLLOW_ROAD");
-    const routed = await routeForMode(seg.waypoints, transportModeRef.current, sm);
-    if (gen !== routeGenerationRef.current) return;
-    const r = base.map((s) =>
-      s.id === segId
-        ? {
-            ...s,
-            routePoints: routed.ok ? routed.points : [],
-            routingFailed: !routed.ok,
-            absurdDetour: !!routed.absurd,
-          }
-        : s,
-    );
-    segsRef.current = r;
-    setSegments(r);
-    const reproj = reprojectCuesOnTrack(cuesRef.current, r);
-    cuesRef.current = reproj;
-    setCues(reproj);
-    syncMap(r);
-    pushHist(r);
-    setRouting(false);
-    if (!routed.ok) setRouteError(routed.message ?? "No se pudo recalcular el tramo.");
+    try {
+      const routed = await routeForMode(seg.waypoints, transportModeRef.current, sm);
+      if (gen !== routeGenerationRef.current) return;
+      const r = base.map((s) =>
+        s.id === segId
+          ? {
+              ...s,
+              routePoints: routed.ok ? routed.points : [],
+              routingFailed: !routed.ok,
+              absurdDetour: !!routed.absurd,
+            }
+          : s,
+      );
+      segsRef.current = r;
+      setSegments(r);
+      const reproj = reprojectCuesOnTrack(cuesRef.current, r);
+      cuesRef.current = reproj;
+      setCues(reproj);
+      syncMap(r);
+      pushHist(r);
+      if (!routed.ok) setRouteError(routed.message ?? "No se pudo recalcular el tramo.");
+    } finally {
+      setRouting(false);
+    }
   }, [pushHist, setCues, setRouteError, setRouting, setSegments, syncMap]);
 
   const handleSplitAtActive = useCallback(async () => {
@@ -1410,10 +1444,19 @@ export default function GpxEditor({
         for (const seg of next) {
           await rerouteSegmentById(seg.id, segsRef.current);
         }
+        return;
+      }
+      if (action === "moveUp") {
+        await handleReorderWaypoint(segId, idx, -1);
+        return;
+      }
+      if (action === "moveDown") {
+        await handleReorderWaypoint(segId, idx, 1);
       }
     },
     [
       handleDeleteWaypoint,
+      handleReorderWaypoint,
       handleToggleViaShaping,
       pointMenu,
       rerouteSegmentById,
@@ -1511,6 +1554,37 @@ export default function GpxEditor({
     },
     [setCues],
   );
+
+  const restoreDraft = useCallback(() => {
+    const draft = restoreEditorDraft();
+    if (!draft) return;
+    segsRef.current = draft.segments;
+    setSegments(draft.segments);
+    setRouteTitle(draft.routeTitle);
+    setTransportMode(draft.transportMode);
+    transportModeRef.current = draft.transportMode;
+    mapAdapterRef.current?.setTransportMode(draft.transportMode);
+    setEditorMode(draft.editorMode);
+    editorModeRef.current = draft.editorMode;
+    setDraftBanner(null);
+    syncMap(draft.segments);
+    pushHist(draft.segments);
+    setSidebarCollapsed(false);
+  }, [
+    pushHist,
+    setDraftBanner,
+    setEditorMode,
+    setRouteTitle,
+    setSegments,
+    setSidebarCollapsed,
+    setTransportMode,
+    syncMap,
+  ]);
+
+  const dismissDraft = useCallback(() => {
+    dismissEditorDraft();
+    setDraftBanner(null);
+  }, [setDraftBanner]);
 
   const routeSignature = useCallback(
     () => computeRouteSignature(segments, routeTitle),
@@ -1700,10 +1774,29 @@ export default function GpxEditor({
       : "via";
 
   // ── Render ────────────────────────────────────────────────────────────────
+  const mapInsetClass = sidebarCollapsed
+    ? "absolute inset-0"
+    : "absolute inset-0 md:right-80";
+
   return (
     <div className="relative flex-1 h-full overflow-hidden">
-      <div className="absolute inset-0">
+      <div className={mapInsetClass}>
         <div ref={mapContainer} className="w-full h-full" />
+
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed((v) => !v)}
+          className="hidden md:flex absolute top-3 right-3 z-20 items-center gap-1.5 rounded-full border border-white/15 bg-[#0a0a0a]/90 px-3 py-1.5 text-[11px] text-white/70 hover:text-white"
+        >
+          {sidebarCollapsed ? "Panel ruta" : "Ocultar panel"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setDrawerOpen((v) => !v)}
+          className="md:hidden absolute top-3 right-3 z-20 rounded-full border border-white/15 bg-[#0a0a0a]/90 px-3 py-1.5 text-[11px] text-white/70"
+        >
+          {drawerOpen ? "Cerrar" : "Ruta"}
+        </button>
 
         <GpxFloatingToolbar
           embedNavRideApp={embedNavRideApp}
@@ -1745,6 +1838,61 @@ export default function GpxEditor({
         {routeError && (
           <div className="absolute top-14 left-1/2 z-10 max-w-[min(420px,calc(100vw-24px))] -translate-x-1/2 rounded-xl border border-white/15 bg-[#0a0a0a]/92 px-3 py-2 text-[11px] text-white/75 shadow-lg">
             {routeError}
+          </div>
+        )}
+
+        {uploadMsg && (
+          <div
+            className={`absolute top-24 left-1/2 z-20 flex max-w-[min(420px,calc(100vw-24px))] -translate-x-1/2 items-start gap-2 rounded-xl border px-3 py-2 text-[11px] shadow-lg ${
+              uploadMsg.ok
+                ? "border-green-500/30 bg-green-950/90 text-green-300"
+                : "border-red-500/30 bg-red-950/90 text-red-300"
+            }`}
+          >
+            {uploadMsg.ok ? (
+              <CheckCircle2 size={13} className="shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle size={13} className="shrink-0 mt-0.5" />
+            )}
+            <span className="flex-1">{uploadMsg.text}</span>
+            <button
+              type="button"
+              onClick={() => setUploadMsg(null)}
+              className="text-white/40 hover:text-white/70"
+              aria-label="Cerrar"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {draftBanner && sidebarCollapsed && (
+          <div className="absolute bottom-24 left-1/2 z-20 flex max-w-[min(420px,calc(100vw-24px))] -translate-x-1/2 flex-col gap-2 rounded-xl border border-[#FF9500]/30 bg-[#0a0a0a]/95 px-3 py-2.5 shadow-lg">
+            <p className="text-[11px] text-[#FF9500]">
+              Borrador local — {draftBanner}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={restoreDraft}
+                className="flex-1 rounded-md bg-[#FF9500]/20 px-2 py-1.5 text-[11px] text-[#FF9500]"
+              >
+                Continuar
+              </button>
+              <button
+                type="button"
+                onClick={dismissDraft}
+                className="rounded-md px-2 py-1.5 text-[11px] text-white/50"
+              >
+                Descartar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {inspectMode && (
+          <div className="absolute bottom-6 left-1/2 z-10 -translate-x-1/2 rounded-full border border-sky-400/40 bg-sky-950/90 px-3 py-1.5 text-[11px] text-sky-200">
+            Modo inspeccionar — toca una vía OSM
           </div>
         )}
 
@@ -1806,6 +1954,41 @@ export default function GpxEditor({
         }}
       />
 
+      <GpxStudioSidePanel
+        collapsed={sidebarCollapsed}
+        mobileOpen={drawerOpen}
+        onCloseMobile={() => setDrawerOpen(false)}
+        routeTitle={routeTitle}
+        onRouteTitleChange={setRouteTitle}
+        segments={segments}
+        activeId={activeId}
+        onSelectSegment={(id) => {
+          setActiveId(id);
+          activeIdRef.current = id;
+        }}
+        onRenameSegment={handleRenameSeg}
+        onDeleteSegment={handleDeleteSeg}
+        onColorSegment={handleColor}
+        onAddSegment={handleAddSeg}
+        advanced={advanced}
+        draftBanner={draftBanner}
+        onRestoreDraft={restoreDraft}
+        onDismissDraft={dismissDraft}
+        uploadMsg={uploadMsg}
+        onDismissUploadMsg={() => setUploadMsg(null)}
+        cues={cues}
+        selectedCueId={selectedCueId}
+        onSelectCue={setSelectedCueId}
+        onDeleteCue={handleDeleteCue}
+        onUpdateCueSeverity={handleUpdateCueSeverity}
+        cueDraftMessage={cueDraftMessage}
+        onCueDraftMessageChange={setCueDraftMessage}
+        cueDraftSeverity={cueDraftSeverity}
+        onCueDraftSeverityChange={setCueDraftSeverity}
+        placeNotePending={placeNotePending}
+        onAddCue={handleAddCue}
+      />
+
       <GpxToolPalette
         editorMode={editorMode}
         transportMode={transportMode}
@@ -1821,6 +2004,7 @@ export default function GpxEditor({
         onSplitSegment={() => void handleSplitAtActive()}
         onJoinSegment={() => void handleJoinNext()}
         onReverseRoute={() => void handleReverse()}
+        onCloseLoop={() => void handleCloseLoop()}
         onInsertMode={() => {
           if (!activeWpt) {
             setRouteError("Selecciona un punto y luego Insertar entre puntos.");
@@ -1838,6 +2022,18 @@ export default function GpxEditor({
           setShowAlternatives(true);
           setShowAnalysis(false);
         }}
+        onToggleInspect={() => {
+          setInspectMode((v) => {
+            const next = !v;
+            if (next) setWayInspector(null);
+            return next;
+          });
+        }}
+        inspectMode={inspectMode}
+        onOpenRoutePanel={() => {
+          setSidebarCollapsed(false);
+          setDrawerOpen(true);
+        }}
         onEditorModeChange={setEditorMode}
         onTransportChange={handleTransportChange}
         onSegmentModeChange={(mode) => {
@@ -1850,6 +2046,7 @@ export default function GpxEditor({
         canSplit={advanced && !!activeWpt && !!activeSeg && activeSeg.waypoints.length >= 3}
         canJoin={advanced && segments.length >= 2}
         canReverse={totalWpts >= 2}
+        canCloseLoop={!!activeSeg && activeSeg.waypoints.length >= 3}
         canInsert={advanced && !!activeWpt}
       />
 

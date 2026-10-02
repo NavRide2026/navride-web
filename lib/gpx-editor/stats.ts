@@ -1,6 +1,6 @@
-import { haversineM, type LngLat } from "./geo.ts";
-import type { GpxDocument, GpxPoint } from "./types.ts";
-import { lngLat } from "./ops.ts";
+import { haversineM, type LngLat } from "./geo";
+import type { GpxDocument, GpxPoint } from "./types";
+import { lngLat } from "./ops";
 
 export type SurfaceBucket = {
   label: string;

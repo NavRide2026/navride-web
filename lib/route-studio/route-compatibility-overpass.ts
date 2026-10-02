@@ -1,7 +1,7 @@
-import type { LngLat } from "./routing.ts";
-import { haversineKm } from "./geo.ts";
-import type { OsmWay } from "./route-compatibility-snap.ts";
-import type { WayTags } from "./route-compatibility.ts";
+import type { LngLat } from "./routing";
+import { haversineKm } from "./geo";
+import type { OsmWay } from "./route-compatibility-snap";
+import type { WayTags } from "./route-compatibility";
 
 /** Overpass query is highway=* with no access/motor_vehicle filter. Master editor graph. */
 const OVERPASS_URLS = [

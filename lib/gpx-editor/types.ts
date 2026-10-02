@@ -1,6 +1,6 @@
-import type { RouteCapsule } from "../route-studio/navride-route/route-capsule.ts";
-import type { NavRideRoute } from "../route-studio/navride-route/types.ts";
-import type { TransportMode } from "../route-studio/routing.ts";
+import type { RouteCapsule } from "../route-studio/navride-route/route-capsule";
+import type { NavRideRoute } from "../route-studio/navride-route/types";
+import type { TransportMode } from "../route-studio/routing";
 
 export type { TransportMode };
 

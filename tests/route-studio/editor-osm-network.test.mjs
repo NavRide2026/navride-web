@@ -125,17 +125,18 @@ describe("master network keeps all highway classes", () => {
   });
 });
 
-describe("editor no longer uses OSRM existence snap", () => {
-  it("GpxEditor does not call snapClickToRoute or emit snap > 25 m", () => {
+describe("editor uses Valhalla snap with max radius rejection", () => {
+  it("GpxEditor calls snapClickToRoute and can reject snaps beyond max meters", () => {
     const src = readFileSync(
       join(here, "../../components/gpx/GpxEditor.tsx"),
       "utf8",
     );
-    assert.doesNotMatch(src, /snapClickToRoute/);
-    assert.doesNotMatch(src, /snap > /);
-    assert.doesNotMatch(src, /camino no está disponible en los datos de routing/);
-    assert.match(src, /snapClickToOsmNetwork/);
-    assert.match(src, /routeOnOsmNetwork/);
+    assert.match(src, /snapClickToRoute/);
+    assert.match(src, /EDITOR_MAX_SNAP_METERS/);
+    assert.match(src, /rejectedFar/);
+    assert.match(src, /snap > /);
+    assert.doesNotMatch(src, /snapClickToOsmNetwork/);
+    assert.doesNotMatch(src, /nearestRoadPoint\(/);
   });
 
   it("Overpass query keeps all highway=* without access filter", () => {

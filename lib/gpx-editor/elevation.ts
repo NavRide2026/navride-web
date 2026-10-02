@@ -1,5 +1,5 @@
-import type { GpxPoint } from "./types.ts";
-import { isStaleGeneration } from "./engine.ts";
+import type { GpxPoint } from "./types";
+import { isStaleGeneration } from "./engine";
 
 const OPENTOPO = "https://api.opentopodata.org/v1/aster30m";
 

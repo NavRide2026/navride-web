@@ -146,7 +146,7 @@ test("detectAbsurdDetour flags long winding vs short direct", () => {
   assert.equal(detectAbsurdDetour(wps, longDetour), true);
 });
 
-test("snapClickToRoute previews the Valhalla segment", () => {
+test("snapClickToRoute rejects snaps beyond maxSnapM", () => {
   const src = readFileSync(join(root, "lib/route-studio/routing.ts"), "utf8");
   assert.match(src, /export async function snapClickToRoute/);
   assert.match(src, /routeWaypoints\(\[prev, click\], mode, segmentMode\)/);
@@ -154,6 +154,9 @@ test("snapClickToRoute previews the Valhalla segment", () => {
   assert.doesNotMatch(src, /nearestRoadPoint\(/);
   assert.match(src, /export function detectAbsurdDetour/);
   assert.match(src, /osrmProfile: "driving"/);
+  assert.match(src, /distM > maxSnapM/);
+  assert.match(src, /rejectedFar: true/);
+  assert.doesNotMatch(src, /_maxSnapM/);
 });
 
 test("route-health: INVALID on routingFailed; GOOD on clean route", () => {
@@ -325,22 +328,26 @@ test("editor + palette keep import mounted and tool wheel draggable", () => {
     join(root, "components/gpx/GpxToolPalette.tsx"),
     "utf8",
   );
-  assert.match(editor, /Always mounted: importing from the draggable/);
+  // Always-mounted hidden file input for import from the floating + wheel.
+  assert.match(editor, /ref=\{gpxFileInputRef\}/);
+  assert.match(editor, /type="file"/);
   assert.match(editor, /onExport=\{handleDownload\}/);
-  assert.match(editor, /setSidebarCollapsed\(false\)/);
+  assert.match(editor, /GpxToolPalette/);
+  assert.match(editor, /GpxFloatingToolbar/);
+  assert.match(editor, /GpxNavTools/);
   assert.match(palette, /navride:gpx-tool-wheel-position-v1/);
   assert.match(palette, /setPointerCapture/);
   assert.match(palette, /onMainClick/);
   assert.match(palette, /Importar GPX/);
   assert.match(palette, /Exportar GPX/);
   assert.match(palette, /Mapas y capas/);
-  assert.match(palette, /Marcar ruta/);
+  assert.match(palette, /Salir del editor/);
   assert.match(palette, /Enviar a NavRide App/);
   assert.match(palette, /Seguir carretera/);
   assert.match(palette, /Caminar/);
   assert.match(palette, /Nuevo segmento/);
-  assert.match(editor, /Marcar ruta/);
-  assert.match(editor, /if \(follow\) \{/);
+  assert.match(palette, /Análisis y Route Doctor/);
+  assert.match(editor, /if \(follow && prev\)/);
   assert.match(editor, /onLaunch=\{\(\) => void handleLaunch\(\)\}/);
   assert.match(editor, /onTransportChange=\{handleTransportChange\}/);
 });

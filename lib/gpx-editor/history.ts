@@ -1,4 +1,4 @@
-import { cloneDoc, type GpxDocument } from "./types.ts";
+import { cloneDoc, type GpxDocument } from "./types";
 
 export const HISTORY_CAP = 80;
 

@@ -4,7 +4,9 @@ export type PointMenuAction =
   | "delete"
   | "insertAfter"
   | "toggleShaping"
-  | "splitHere";
+  | "splitHere"
+  | "moveUp"
+  | "moveDown";
 
 export function GpxPointContextMenu({
   x,
@@ -74,6 +76,26 @@ export function GpxPointContextMenu({
             onClick={() => onAction("toggleShaping")}
           >
             {isShaping ? "Marcar como vía (via)" : "Marcar como shaping"}
+          </button>
+        )}
+        {advanced && pointIndex > 0 && (
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full rounded-lg px-2.5 py-2 text-left text-xs text-white/80 hover:bg-white/8"
+            onClick={() => onAction("moveUp")}
+          >
+            Subir punto
+          </button>
+        )}
+        {advanced && pointIndex < totalPoints - 1 && (
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full rounded-lg px-2.5 py-2 text-left text-xs text-white/80 hover:bg-white/8"
+            onClick={() => onAction("moveDown")}
+          >
+            Bajar punto
           </button>
         )}
         {advanced && pointIndex > 0 && pointIndex < totalPoints - 1 && (

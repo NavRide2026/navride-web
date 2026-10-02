@@ -2,8 +2,8 @@
  * Local-first GPX operations. Crop/reverse/round-trip/replace-span semantics
  * adapted from gpx.studio MIT gpx library. No server round-trip.
  */
-import { haversineM, interpolatePoints, polylineLengthM, ramerDouglasPeucker, type LngLat } from "./geo.ts";
-import { markSegmentAnchors, neighbouringAnchors } from "./anchors.ts";
+import { haversineM, interpolatePoints, polylineLengthM, ramerDouglasPeucker, type LngLat } from "./geo";
+import { markSegmentAnchors, neighbouringAnchors } from "./anchors";
 import {
   cloneDoc,
   ensureActiveTrack,
@@ -14,7 +14,7 @@ import {
   type MergeMode,
   type SplitMode,
   uid,
-} from "./types.ts";
+} from "./types";
 
 export function markDirty(doc: GpxDocument): GpxDocument {
   doc.dirty = true;

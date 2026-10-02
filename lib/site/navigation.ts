@@ -6,6 +6,7 @@ export const NAV_PUBLIC_LINKS: NavLink[] = [
   { href: "/funciones", label: "Funciones" },
   { href: "/planes", label: "Planes" },
   { href: "/roadmap", label: "Evolución" },
+  { href: "/blog", label: "Blog" },
   { href: "/novedades", label: "Novedades" },
   { href: "/contacto", label: "Contacto" },
 ];

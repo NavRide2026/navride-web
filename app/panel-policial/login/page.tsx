@@ -59,7 +59,7 @@ export default function PoliciaLoginPage() {
           </div>
           <h1 className="text-white font-bold text-xl tracking-tight">NavRide</h1>
           <span className="mt-2 text-[11px] font-bold tracking-widest text-[#93c5fd] bg-[#1a2a4a] border border-[#2a4a8a]/50 px-3 py-1 rounded-full">
-            PANEL MOSSOS D'ESQUADRA
+            PANEL MOSSOS D&apos;ESQUADRA
           </span>
         </div>
 

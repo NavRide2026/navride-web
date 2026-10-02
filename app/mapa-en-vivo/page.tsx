@@ -159,7 +159,8 @@ export default function MapaEnVivoPage() {
 
   // Sync newType cuando cambia newCategory
   useEffect(() => {
-    setNewType(CATALOG[newCategory].types[0].id);
+    const next = CATALOG[newCategory].types[0].id;
+    queueMicrotask(() => setNewType(next));
   }, [newCategory]);
 
   // Comprobar rol del usuario al montar
@@ -171,7 +172,6 @@ export default function MapaEnVivoPage() {
   }, []);
 
   // ── Funciones de marcadores (refs para evitar stale closures) ────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const addMarkerFn    = useRef<(a: RouteAlert) => void>(() => {});
   const removeMarkerFn = useRef<(id: string) => void>(() => {});
 
@@ -262,7 +262,7 @@ export default function MapaEnVivoPage() {
       removeMarkerFn.current = removeMarker;
 
       // Exponer vote-down para los botones HTML de los popups de MapLibre
-      ;(window as any).__navrideVoteDown = async (id: string, currentVotesDown: number) => {
+      ;(window as Window & { __navrideVoteDown?: (id: string, currentVotesDown: number) => Promise<void> }).__navrideVoteDown = async (id: string, currentVotesDown: number) => {
         try {
           const res = await fetch(`/api/alertas/${id}/votar`, {
             method: "POST",
@@ -380,8 +380,9 @@ export default function MapaEnVivoPage() {
       cancelled = true;
       channelCleanup?.();
       mapRef.current?.remove();
-      markersRef.current.clear();
-      delete (window as any).__navrideVoteDown;
+      const markers = markersRef.current;
+      markers.clear();
+      delete (window as Window & { __navrideVoteDown?: unknown }).__navrideVoteDown;
     };
   }, []);
 

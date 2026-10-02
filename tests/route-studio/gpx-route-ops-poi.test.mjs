@@ -86,14 +86,16 @@ describe("app/web same compatibility", () => {
 });
 
 describe("editor tools wired without cloning gpx.studio chrome", () => {
-  it("exposes invert / round trip / back to start in the existing panel", () => {
-    const src = readFileSync(join(here, "../../components/gpx/GpxEditor.tsx"), "utf8");
-    assert.match(src, /Invertir/);
-    assert.match(src, /Ida y vuelta/);
-    assert.match(src, /Volver al inicio/);
-    assert.match(src, /Cerrar circuito/);
-    assert.match(src, /Puntos de interés/);
-    assert.doesNotMatch(src, /gpx\.studio/);
-    assert.doesNotMatch(src, /graphhopper\.gpx\.studio/i);
+  it("exposes reverse / split / join / insert in palette and close-loop helper", () => {
+    const editor = readFileSync(join(here, "../../components/gpx/GpxEditor.tsx"), "utf8");
+    const palette = readFileSync(join(here, "../../components/gpx/GpxToolPalette.tsx"), "utf8");
+    assert.match(palette, /Invertir ruta/);
+    assert.match(palette, /Insertar/);
+    assert.match(editor, /handleReverse/);
+    assert.match(editor, /handleCloseLoop/);
+    assert.match(editor, /handleSplitAtActive/);
+    assert.match(editor, /handleJoinNext/);
+    assert.doesNotMatch(editor, /gpx\.studio/);
+    assert.doesNotMatch(editor, /graphhopper\.gpx\.studio/i);
   });
 });

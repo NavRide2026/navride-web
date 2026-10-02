@@ -3,9 +3,9 @@
  * imported tracks do not show every trackpoint; RDP keeps shape handles
  * and minZoom hides them until the user zooms in.
  */
-import { ramerDouglasPeucker, zoomForDistance, type LngLat } from "./geo.ts";
-import type { AnchorRef, GpxDocument, GpxPoint } from "./types.ts";
-import { uid } from "./types.ts";
+import { ramerDouglasPeucker, zoomForDistance, type LngLat } from "./geo";
+import type { AnchorRef, GpxDocument, GpxPoint } from "./types";
+import { uid } from "./types";
 
 const ANCHOR_RDP_M = 1;
 

@@ -1,12 +1,12 @@
-import type { LngLat, TransportMode } from "./routing.ts";
-import { haversineKm } from "./geo.ts";
+import type { LngLat, TransportMode } from "./routing";
+import { haversineKm } from "./geo";
 import {
   classifyWay,
   modeLabelEs,
   type CompatibilityClass,
   type CompatibilityResult,
-} from "./route-compatibility.ts";
-import { distancePointToWayM, type OsmWay } from "./route-compatibility-snap.ts";
+} from "./route-compatibility";
+import { distancePointToWayM, type OsmWay } from "./route-compatibility-snap";
 
 export type CompatibilityIssue = {
   id: string;

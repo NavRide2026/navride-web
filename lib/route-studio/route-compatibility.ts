@@ -6,7 +6,7 @@
  * Superficie ≠ permiso de acceso.
  */
 
-import type { TransportMode } from "./routing.ts";
+import type { TransportMode } from "./routing";
 
 export type CompatibilityClass =
   | "COMPATIBLE"

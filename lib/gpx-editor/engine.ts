@@ -1,6 +1,6 @@
-import { markDocumentAnchors } from "./anchors.ts";
-import { parseGpxDocument } from "./parse.ts";
-import { serializeGpx } from "./serialize.ts";
+import { markDocumentAnchors } from "./anchors";
+import { parseGpxDocument } from "./parse";
+import { serializeGpx } from "./serialize";
 import {
   addWaypoint,
   appendPoint,
@@ -29,7 +29,7 @@ import {
   straightRoute,
   toPoint,
   updateWaypoint,
-} from "./ops.ts";
+} from "./ops";
 import {
   canRedo,
   canUndo,
@@ -38,7 +38,7 @@ import {
   redo as redoHist,
   undo as undoHist,
   type HistoryState,
-} from "./history.ts";
+} from "./history";
 import type {
   GpxDocument,
   GpxPoint,
@@ -46,9 +46,9 @@ import type {
   SplitMode,
   TraceMode,
   TransportMode,
-} from "./types.ts";
-import { cloneDoc } from "./types.ts";
-import type { LngLat } from "./geo.ts";
+} from "./types";
+import { cloneDoc } from "./types";
+import type { LngLat } from "./geo";
 
 export function isStaleGeneration(generation: number, latest: number): boolean {
   return generation !== latest;

@@ -65,6 +65,7 @@ export const PUBLIC_ROUTES = [
   "/planes",
   "/funciones",
   "/roadmap",
+  "/blog",
   "/novedades",
   "/noticias",
   "/legal",

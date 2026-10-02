@@ -7,6 +7,7 @@ const exploreLinks = [
   ["/funciones", "Funciones"],
   ["/planes", "Planes"],
   ["/roadmap", "Evolución"],
+  ["/blog", "Blog"],
   ["/novedades", "Novedades"],
 ] as const;
 

@@ -2,14 +2,14 @@ import {
   NAVRIDE_GPX_NS,
   exportGpxWithExtensions,
   type TrackPointInput,
-} from "../route-studio/navride-route/gpx-codec.ts";
+} from "../route-studio/navride-route/gpx-codec";
 import {
   createEmptyRoute,
   routeToJson,
   type NavRideRoute,
-} from "../route-studio/navride-route/types.ts";
-import type { GpxDocument, GpxPoint, GpxWaypoint } from "./types.ts";
-import { allPointsIncludingHidden, lngLatsOf } from "./types.ts";
+} from "../route-studio/navride-route/types";
+import type { GpxDocument, GpxPoint, GpxWaypoint } from "./types";
+import { allPointsIncludingHidden, lngLatsOf } from "./types";
 
 function escapeXml(s: string): string {
   return s

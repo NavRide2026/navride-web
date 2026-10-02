@@ -2,21 +2,21 @@
  * Red maestra del editor GPX: todas las highway OSM, sin filtrar acceso.
  * El perfil decide compatibilidad; no se elimina una vía del grafo.
  */
-import { haversineKm } from "./geo.ts";
-import type { LngLat } from "./routing.ts";
+import { haversineKm } from "./geo";
+import type { LngLat } from "./routing";
 import {
   classifyWay,
   isPreferredSnapTarget,
   type CompatibilityResult,
-} from "./route-compatibility.ts";
+} from "./route-compatibility";
 import {
   decideEditorSnap,
   distancePointToWayM,
   rankWaysNearClick,
   type OsmWay,
   type SnapDecision,
-} from "./route-compatibility-snap.ts";
-import type { TransportMode } from "./routing.ts";
+} from "./route-compatibility-snap";
+import type { TransportMode } from "./routing";
 
 export const EDITOR_OSM_SNAP_RADIUS_M = 40;
 

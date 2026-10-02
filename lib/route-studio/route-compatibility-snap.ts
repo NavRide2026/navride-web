@@ -1,13 +1,13 @@
-import type { LngLat } from "./routing.ts";
-import { haversineKm } from "./geo.ts";
+import type { LngLat } from "./routing";
+import { haversineKm } from "./geo";
 import {
   classifyWay,
   isBlocking,
   isPreferredSnapTarget,
   type CompatibilityResult,
   type WayTags,
-} from "./route-compatibility.ts";
-import type { TransportMode } from "./routing.ts";
+} from "./route-compatibility";
+import type { TransportMode } from "./routing";
 
 export type OsmWay = {
   id: number;

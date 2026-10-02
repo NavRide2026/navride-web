@@ -19,10 +19,12 @@ import {
   GitBranch,
   GitMerge,
   Layers,
+  List,
   MapPin,
   Motorbike,
   Plus,
   Route,
+  Search,
   Smartphone,
   Sparkles,
   Split,
@@ -111,9 +113,13 @@ export function GpxToolPalette({
   onSplitSegment,
   onJoinSegment,
   onReverseRoute,
+  onCloseLoop,
   onInsertMode,
   onShowAnalysis,
   onShowAlternatives,
+  onToggleInspect,
+  inspectMode,
+  onOpenRoutePanel,
   onEditorModeChange,
   onTransportChange,
   onSegmentModeChange,
@@ -124,6 +130,7 @@ export function GpxToolPalette({
   canSplit,
   canJoin,
   canReverse,
+  canCloseLoop,
   canInsert,
   showExit,
 }: {
@@ -140,9 +147,13 @@ export function GpxToolPalette({
   onSplitSegment: () => void;
   onJoinSegment: () => void;
   onReverseRoute: () => void;
+  onCloseLoop: () => void;
   onInsertMode: () => void;
   onShowAnalysis: () => void;
   onShowAlternatives: () => void;
+  onToggleInspect: () => void;
+  inspectMode: boolean;
+  onOpenRoutePanel: () => void;
   onEditorModeChange: (mode: EditorMode) => void;
   onTransportChange: (mode: TransportMode) => void;
   onSegmentModeChange: (mode: RouteSegmentMode) => void;
@@ -153,6 +164,7 @@ export function GpxToolPalette({
   canSplit: boolean;
   canJoin: boolean;
   canReverse: boolean;
+  canCloseLoop: boolean;
   canInsert: boolean;
   showExit: boolean;
 }) {
@@ -245,6 +257,13 @@ export function GpxToolPalette({
           disabled: !canReverse,
         },
         {
+          section: "Edición",
+          label: "Cerrar circuito",
+          icon: GitMerge,
+          action: onCloseLoop,
+          disabled: !canCloseLoop,
+        },
+        {
           section: "Actividad",
           label: "Caminar",
           icon: TRANSPORT_ICONS.walk,
@@ -307,6 +326,19 @@ export function GpxToolPalette({
         },
         {
           section: "Mapa",
+          label: inspectMode ? "Inspeccionar (ON)" : "Inspeccionar vía",
+          icon: Search,
+          action: onToggleInspect,
+          active: inspectMode,
+        },
+        {
+          section: "Mapa",
+          label: "Panel ruta",
+          icon: List,
+          action: onOpenRoutePanel,
+        },
+        {
+          section: "Mapa",
           label: "Mapas y capas",
           icon: Layers,
           action: onLayers,
@@ -356,10 +388,12 @@ export function GpxToolPalette({
       canJoin,
       canLaunch,
       canReverse,
+      canCloseLoop,
       canSave,
       canSplit,
       editorMode,
       onAddSegment,
+      onCloseLoop,
       onEditorModeChange,
       onExit,
       onExport,
@@ -374,8 +408,11 @@ export function GpxToolPalette({
       onShowAlternatives,
       onShowAnalysis,
       onSplitSegment,
+      onToggleInspect,
+      onOpenRoutePanel,
       onTransportChange,
       segmentMode,
+      inspectMode,
       showExit,
       transportMode,
     ],
@@ -494,7 +531,7 @@ export function GpxToolPalette({
                         : "text-white/80 hover:bg-white/8 hover:text-white disabled:hover:text-white/80"
                     }`}
                     role="menuitem"
-                    aria-checked={active ? true : undefined}
+                    aria-current={active ? "true" : undefined}
                   >
                     <Icon size={15} className="shrink-0 text-[#f97316]" />
                     <span className="flex-1">{label}</span>
