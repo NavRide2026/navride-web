@@ -1,10 +1,12 @@
 "use client";
 
-import { Layers, Redo2, Trash2, Undo2 } from "lucide-react";
+import { Layers, Redo2, Trash2, Undo2, Wrench, X } from "lucide-react";
 import type { StyleId } from "@/lib/gpx-editor/editor-types";
 
 export function GpxFloatingToolbar({
   embedNavRideApp,
+  mobileOpen,
+  onToggleMobile,
   canClear,
   canUndo,
   canRedo,
@@ -18,6 +20,8 @@ export function GpxFloatingToolbar({
   onChangeStyle,
 }: {
   embedNavRideApp: boolean;
+  mobileOpen: boolean;
+  onToggleMobile: () => void;
   canClear: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -31,7 +35,18 @@ export function GpxFloatingToolbar({
   onChangeStyle: (style: StyleId) => void;
 }) {
   return (
-    <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5">
+    <div className="absolute top-3 left-3 z-30 flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={onToggleMobile}
+        title={mobileOpen ? "Cerrar edición rápida" : "Edición rápida"}
+        className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-[#0a0a0a]/95 text-white/80 shadow-xl backdrop-blur-xl md:hidden"
+        aria-label={mobileOpen ? "Cerrar edición rápida" : "Abrir edición rápida"}
+        aria-expanded={mobileOpen}
+      >
+        {mobileOpen ? <X size={20} /> : <Wrench size={20} />}
+      </button>
+      <div className={`${mobileOpen ? "flex" : "hidden"} flex-col gap-1.5 md:flex`}>
       <button
         type="button"
         onClick={onClear}
@@ -102,6 +117,7 @@ export function GpxFloatingToolbar({
             ))}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
