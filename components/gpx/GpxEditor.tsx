@@ -191,6 +191,8 @@ export default function GpxEditor({
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [inspectMode, setInspectMode] = useState(false);
+  const [mobileEditOpen, setMobileEditOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const inspectModeRef = useRef(false);
 
   const [editorState, editorActions] = useGpxEditorStore(INIT_SEG);
@@ -1800,6 +1802,12 @@ export default function GpxEditor({
 
         <GpxFloatingToolbar
           embedNavRideApp={embedNavRideApp}
+          mobileOpen={mobileEditOpen}
+          onToggleMobile={() => {
+            setMobileEditOpen((open) => !open);
+            setMobileNavOpen(false);
+            setDrawerOpen(false);
+          }}
           canClear={!!activeSeg && activeSeg.waypoints.length > 0}
           canUndo={histIdx > 0}
           canRedo={histIdx < histLen - 1}
@@ -1818,6 +1826,12 @@ export default function GpxEditor({
 
         <GpxNavTools
           locating={locating}
+          mobileOpen={mobileNavOpen}
+          onToggleMobile={() => {
+            setMobileNavOpen((open) => !open);
+            setMobileEditOpen(false);
+            setDrawerOpen(false);
+          }}
           canFit={totalWpts >= 2}
           showExit={!embedNavRideApp}
           onLocate={handleLocate}
