@@ -158,8 +158,8 @@ export function progressMNearestOnPolyline(
   };
 }
 
-/** Max snap distance (m) for editor follow-path: prefer NO_ROUTE over wrong road. */
-export const EDITOR_MAX_SNAP_METERS = 25;
+/** Editor click tolerance. Routing still decides network legality; this only avoids rejecting valid nearby OSM edges on touch screens. */
+export const EDITOR_MAX_SNAP_METERS = 80;
 
 /** Off-track note threshold (m): keep lat/lon, null route offset. */
 export const NOTE_OFF_TRACK_METERS = 40;
