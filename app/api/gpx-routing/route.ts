@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 type LngLat = [number, number];
 type TransportMode = "walk" | "bike" | "moto" | "car";
-type SegmentMode = "FOLLOW_ROAD" | "FOLLOW_TRAIL" | "MANUAL_STRAIGHT";
+type SegmentMode = "FOLLOW_ROAD" | "FOLLOW_ROAD_TRAIL" | "FOLLOW_TRAIL" | "MANUAL_STRAIGHT";
 type Preference = "short" | "fast" | "balanced" | "adventure";
 
 const configuredValhalla = process.env.NAVRIDE_VALHALLA_URL
@@ -65,6 +65,7 @@ function valhallaProfile(
   preference: Preference = "balanced",
 ) {
   const adventure = preference === "adventure" || segmentMode === "FOLLOW_TRAIL";
+  const mixed = segmentMode === "FOLLOW_ROAD_TRAIL";
   const shortBias = preference === "short";
   const fastBias = preference === "fast";
 
@@ -116,7 +117,9 @@ function valhallaProfile(
             ? { use_trails: 0.1, use_highways: 0.6, use_tolls: 0.4 }
             : fastBias
               ? { use_trails: 0.05, use_highways: 1.0, use_tolls: 0.8, top_speed: 130 }
-              : { use_trails: 0.2, use_highways: 0.8, use_tolls: 0.5 },
+              : mixed
+                ? { use_trails: 0.75, use_highways: 0.55, use_tolls: 0.3, top_speed: 100 }
+                : { use_trails: 0.2, use_highways: 0.8, use_tolls: 0.5 },
       },
     };
   }
@@ -270,7 +273,7 @@ async function execute(
   if (!["walk", "bike", "moto", "car"].includes(String(mode))) {
     return Response.json({ ok: false, message: "INVALID_MODE" }, { status: 400 });
   }
-  if (!["FOLLOW_ROAD", "FOLLOW_TRAIL"].includes(String(segmentMode))) {
+  if (!["FOLLOW_ROAD", "FOLLOW_ROAD_TRAIL", "FOLLOW_TRAIL"].includes(String(segmentMode))) {
     return Response.json({ ok: false, message: "INVALID_SEGMENT_MODE" }, { status: 400 });
   }
   const pref = ["short", "fast", "balanced", "adventure"].includes(String(preference))
