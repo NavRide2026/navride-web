@@ -1,15 +1,29 @@
 /**
  * Estilo satélite Esri + etiquetas vectoriales OpenFreeMap (OpenMapTiles).
- * Sin overlay raster opaco: solo capas symbol/line de etiquetas sobre el raster.
+ * DEM Terrarium (AWS Terrain Tiles) drapeado: raster satélite sobre malla 3D.
+ * Glyphs/vector tiles via canonical /api/map-assets proxy (W11).
  */
 
+import {
+  OPENFREEMAP_GLYPHS,
+  OPENFREEMAP_VECTOR_SOURCE_URL,
+  OPENFREEMAP_ATTRIBUTION,
+} from "./editor-map-style";
+import {
+  SATELLITE_DEM_ATTRIBUTION,
+  SATELLITE_DEM_SOURCE,
+  SATELLITE_DEM_SOURCE_ID,
+  SATELLITE_HILLSHADE_LAYER,
+  SATELLITE_TERRAIN_SPEC,
+} from "./satellite-terrain";
+
 const ESRI_ATTRIB =
-  "© Esri, Maxar, Earthstar Geographics | © OpenMapTiles © OpenStreetMap";
+  `© Esri, Maxar, Earthstar Geographics | © OpenMapTiles © OpenStreetMap | ${SATELLITE_DEM_ATTRIBUTION}`;
 
 const VECTOR_SOURCE = {
   type: "vector" as const,
-  url: "https://tiles.openfreemap.org/planet",
-  attribution: "© OpenMapTiles © OpenStreetMap contributors",
+  url: OPENFREEMAP_VECTOR_SOURCE_URL,
+  attribution: OPENFREEMAP_ATTRIBUTION,
 };
 
 /** Estilo síncrono mínimo (satélite + labels vectoriales explícitos). */
@@ -17,7 +31,7 @@ export function buildSatelliteStyleSync(): object {
   return {
     version: 8,
     name: "NavRide Satellite + Labels",
-    glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+    glyphs: OPENFREEMAP_GLYPHS,
     sources: {
       satellite: {
         type: "raster",
@@ -30,7 +44,9 @@ export function buildSatelliteStyleSync(): object {
         attribution: ESRI_ATTRIB,
       },
       openmaptiles: VECTOR_SOURCE,
+      [SATELLITE_DEM_SOURCE_ID]: SATELLITE_DEM_SOURCE,
     },
+    terrain: SATELLITE_TERRAIN_SPEC,
     layers: [
       {
         id: "background",
@@ -43,6 +59,7 @@ export function buildSatelliteStyleSync(): object {
         source: "satellite",
         maxzoom: 19,
       },
+      SATELLITE_HILLSHADE_LAYER,
       {
         id: "sat-road-casing",
         type: "line",
@@ -159,7 +176,7 @@ type MlStyle = {
  */
 export async function buildSatelliteStyleFromLiberty(): Promise<object> {
   try {
-    const res = await fetch("https://tiles.openfreemap.org/styles/liberty", {
+    const res = await fetch("/api/map-style/liberty", {
       signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return buildSatelliteStyleSync();
@@ -203,6 +220,7 @@ export async function buildSatelliteStyleFromLiberty(): Promise<object> {
         maxzoom: 19,
         attribution: ESRI_ATTRIB,
       },
+      [SATELLITE_DEM_SOURCE_ID]: SATELLITE_DEM_SOURCE,
     };
     if (liberty.sources?.openmaptiles) {
       sources.openmaptiles = liberty.sources.openmaptiles;
@@ -213,12 +231,12 @@ export async function buildSatelliteStyleFromLiberty(): Promise<object> {
     return {
       version: 8,
       name: "NavRide Satellite + Liberty Labels",
-      glyphs:
-        liberty.glyphs ??
-        "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+      glyphs: liberty.glyphs ?? OPENFREEMAP_GLYPHS,
       sources,
+      terrain: SATELLITE_TERRAIN_SPEC,
       layers: [
         { id: "sat-bg", type: "raster", source: "satellite" },
+        SATELLITE_HILLSHADE_LAYER,
         ...labelLayers,
       ],
     };

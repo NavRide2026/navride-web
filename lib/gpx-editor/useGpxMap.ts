@@ -14,6 +14,7 @@ import {
   GpxMapAdapter,
   type GpxMapSnapshot,
 } from "./map-adapter";
+import { syncEditorTerrain } from "./satellite-terrain-runtime";
 
 const INITIAL_CENTER: [number, number] = [-3.7, 40.4];
 const MAPLIBRE_WORKER_URL = "/maplibre/maplibre-gl-worker.mjs";
@@ -131,6 +132,8 @@ export function useGpxMap(options: UseGpxMapOptions): void {
         center: INITIAL_CENTER,
         zoom: 5,
         maxZoom: 20,
+        maxPitch: initialStyleIdRef.current === "satellite" ? 75 : 60,
+        pitch: initialStyleIdRef.current === "satellite" ? 58 : 0,
         attributionControl: { compact: true },
       });
       mapRef.current = map;
@@ -140,6 +143,7 @@ export function useGpxMap(options: UseGpxMapOptions): void {
       map.on("load", () => {
         if (lifecycle.signal.aborted) return;
         adapter.setupLayers(getSnapshotRef.current());
+        syncEditorTerrain(map as never, getSnapshotRef.current().styleId);
         mapReadyRef.current = true;
         styleChangingRef.current = false;
         bindEventsRef.current(map);
@@ -150,6 +154,7 @@ export function useGpxMap(options: UseGpxMapOptions): void {
         const snapshot = getSnapshotRef.current();
         map.setMaxZoom(snapshot.styleId === "satellite" ? 19 : 20);
         adapter.setupLayers(snapshot);
+        syncEditorTerrain(map as never, snapshot.styleId);
         mapReadyRef.current = true;
         styleChangingRef.current = false;
       });

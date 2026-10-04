@@ -1,12 +1,34 @@
 import type { NextConfig } from "next";
 
+/**
+ * CSP compatible with Next.js, MapLibre workers, Supabase, OpenFreeMap proxy,
+ * Esri imagery, OSRM/Valhalla, Nominatim, and the Flutter WebView editor.
+ */
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://server.arcgisonline.com https://s3.amazonaws.com https://elevation-tiles-prod.s3.amazonaws.com https://*.supabase.co https://*.supabase.in",
+  "font-src 'self' data:",
+  "worker-src 'self' blob:",
+  "child-src 'self' blob:",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in https://valhalla.openstreetmap.de https://valhalla1.openstreetmap.de https://router.project-osrm.org https://tiles.openfreemap.org https://nominatim.openstreetmap.org https://server.arcgisonline.com https://s3.amazonaws.com https://elevation-tiles-prod.s3.amazonaws.com",
+  "media-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'self'",
+  "upgrade-insecure-requests",
+].join("; ");
+
 const securityHeaders = [
-  { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self)" },
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "Content-Security-Policy", value: contentSecurityPolicy },
+  // Prefer CSP frame-ancestors over X-Frame-Options so WebView/embed stays workable.
 ];
 
 const nextConfig: NextConfig = {
