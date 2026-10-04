@@ -1,9 +1,11 @@
 "use client";
 
-import { Compass, DoorOpen, Loader2, Maximize2, Navigation } from "lucide-react";
+import { Compass, DoorOpen, Loader2, Maximize2, Navigation, SlidersHorizontal, X } from "lucide-react";
 
 export function GpxNavTools({
   locating,
+  mobileOpen,
+  onToggleMobile,
   canFit,
   showExit,
   onLocate,
@@ -12,6 +14,8 @@ export function GpxNavTools({
   onExit,
 }: {
   locating: boolean;
+  mobileOpen: boolean;
+  onToggleMobile: () => void;
   canFit: boolean;
   showExit: boolean;
   onLocate: () => void;
@@ -20,7 +24,18 @@ export function GpxNavTools({
   onExit?: () => void;
 }) {
   return (
-    <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5">
+    <div className="absolute right-3 top-16 z-30 flex flex-col items-end gap-1.5 md:top-3">
+      <button
+        type="button"
+        onClick={onToggleMobile}
+        title={mobileOpen ? "Cerrar acciones del mapa" : "Acciones del mapa"}
+        className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-[#0a0a0a]/95 text-white/80 shadow-xl backdrop-blur-xl md:hidden"
+        aria-label={mobileOpen ? "Cerrar acciones del mapa" : "Abrir acciones del mapa"}
+        aria-expanded={mobileOpen}
+      >
+        {mobileOpen ? <X size={20} /> : <SlidersHorizontal size={20} />}
+      </button>
+      <div className={`${mobileOpen ? "flex" : "hidden"} flex-col gap-1.5 md:flex`}>
       <button
         type="button"
         onClick={onLocate}
@@ -64,6 +79,7 @@ export function GpxNavTools({
           <DoorOpen size={15} />
         </button>
       )}
+      </div>
     </div>
   );
 }
