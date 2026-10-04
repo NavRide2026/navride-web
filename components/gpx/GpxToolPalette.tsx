@@ -300,6 +300,13 @@ export function GpxToolPalette({
         },
         {
           section: "Modo del tramo",
+          label: "Seguir carretera y caminos",
+          icon: Route,
+          action: () => onSegmentModeChange("FOLLOW_ROAD_TRAIL"),
+          active: segmentMode === "FOLLOW_ROAD_TRAIL",
+        },
+        {
+          section: "Modo del tramo",
           label: "Seguir caminos",
           icon: Footprints,
           action: () => onSegmentModeChange("FOLLOW_TRAIL"),
