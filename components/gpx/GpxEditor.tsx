@@ -1794,7 +1794,11 @@ export default function GpxEditor({
         </button>
         <button
           type="button"
-          onClick={() => setDrawerOpen((v) => !v)}
+          onClick={() => {
+            setDrawerOpen((v) => !v);
+            setMobileEditOpen(false);
+            setMobileNavOpen(false);
+          }}
           className="md:hidden absolute top-3 right-3 z-20 rounded-full border border-white/15 bg-[#0a0a0a]/90 px-3 py-1.5 text-[11px] text-white/70"
         >
           {drawerOpen ? "Cerrar" : "Ruta"}
@@ -2046,6 +2050,8 @@ export default function GpxEditor({
         inspectMode={inspectMode}
         onOpenRoutePanel={() => {
           setSidebarCollapsed(false);
+          setMobileEditOpen(false);
+          setMobileNavOpen(false);
           setDrawerOpen(true);
         }}
         onEditorModeChange={setEditorMode}
