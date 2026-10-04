@@ -5,6 +5,7 @@
 
 export type RouteSegmentMode =
   | "FOLLOW_ROAD"
+  | "FOLLOW_ROAD_TRAIL"
   | "FOLLOW_TRAIL"
   | "MANUAL_STRAIGHT";
 
@@ -17,6 +18,11 @@ export const ROUTE_SEGMENT_MODES: {
     id: "FOLLOW_ROAD",
     label: "Seguir carretera",
     hint: "Routing por red viaria. Sin ruta válida → error honesto (no recta falsa).",
+  },
+  {
+    id: "FOLLOW_ROAD_TRAIL",
+    label: "Seguir carretera y caminos",
+    hint: "Modo mixto: enlaza carreteras, pistas y caminos transitables sin obligar a cambiar de modo.",
   },
   {
     id: "FOLLOW_TRAIL",
@@ -37,6 +43,7 @@ export function parseRouteSegmentMode(raw: unknown): RouteSegmentMode {
     .trim()
     .toUpperCase();
   if (s === "FOLLOW_TRAIL" || s === "TRAIL") return "FOLLOW_TRAIL";
+  if (s === "FOLLOW_ROAD_TRAIL" || s === "ROAD_TRAIL" || s === "MIXED") return "FOLLOW_ROAD_TRAIL";
   if (
     s === "MANUAL_STRAIGHT" ||
     s === "MANUAL" ||
